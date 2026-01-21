@@ -111,10 +111,23 @@
         /* ドッキング（固定）状態のスタイル */
         .window.docked-bottom {
             position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; top: auto !important;
-            width: 100% !important; height: 250px !important; z-index: 20000 !important;
-            border-radius: 0 !important; border-top: 2px solid #63b3ed; border-left: none; border-right: none; border-bottom: none;
+            width: 100% !important; 
+            z-index: 20000 !important;
+            border-radius: 0 !important; border-top: none; border-left: none; border-right: none; border-bottom: none;
             resize: none !important; margin: 0 !important;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.3); /* 上向きの影を追加 */
         }
+        /* ドッキング時専用のリサイズハンドル（ウィンドウの上部に表示） */
+        .dock-resize-handle {
+            display: none; /* 通常は非表示 */
+            height: 20px; background-color: #2d3748; cursor: row-resize; flex-shrink: 0;
+            justify-content: center; align-items: center; border-top: 2px solid #63b3ed;
+            touch-action: none; /* スマホでのスクロール干渉防止 */
+        }
+        .window.docked-bottom .dock-resize-handle {
+            display: flex; /* ドッキング時のみ表示 */
+        }
+        .dock-resize-handle::after { content: ""; width: 50px; height: 4px; background-color: #718096; border-radius: 2px; }
 
         .win-header {
             padding: 6px 8px; background-color: #2d3748; border-bottom: 1px solid #4a5568;
@@ -574,71 +587,63 @@
         }
         
         async function saveWindowToDB(winId) {
-        if (!db) return;
-        const el = document.getElementById(winId); if (!el) return;
-        const idNum = parseInt(winId.split('-')[1]);
-        const isMobile = window.innerWidth <= 768;
-        
-        const ta = el.querySelector('textarea');
-        const titleInput = el.querySelector('.win-title-input');
-        const mediaLayer = document.getElementById(`media-${idNum}`);
-        
-        // データとしてのメディア保持判定（表示・非表示に関わらずデータがあればtrue）
-        // ただし、UI制御のために show クラスの状態も見ておきたいが、
-        // ここでは「データ保存」なので、あくまでblobがあるかどうか等を重視
-        const hasMediaContent = !!blobCache[idNum]; 
+            if (!db) return;
+            const el = document.getElementById(winId); if (!el) return;
+            const idNum = parseInt(winId.split('-')[1]);
+            const isMobile = window.innerWidth <= 768;
+            
+            const ta = el.querySelector('textarea');
+            const titleInput = el.querySelector('.win-title-input');
+            
+            // データとしてのメディア保持判定
+            const hasMediaContent = !!blobCache[idNum]; 
+            let blob = null, type = null;
+            if (hasMediaContent) { blob = blobCache[idNum].blob; type = blobCache[idNum].type; }
+            
+            const allWins = Array.from(document.getElementById('canvas').children);
+            const myOrder = allWins.indexOf(el);
 
-        let blob = null, type = null;
-        if (hasMediaContent) { blob = blobCache[idNum].blob; type = blobCache[idNum].type; }
-        
-        const allWins = Array.from(document.getElementById('canvas').children);
-        const myOrder = allWins.indexOf(el);
+            const tx = db.transaction([STORE_WINDOWS], 'readonly');
+            const old = await new Promise(r => { const req = tx.objectStore(STORE_WINDOWS).get(idNum); req.onsuccess = () => r(req.result); });
+            
+            // 既存データの読み込み
+            let layoutPC = (old && old.layoutPC) ? old.layoutPC : { x:'50px', y:'50px', w:'320px', h:'400px', z:100, fontSize: '14px' };
+            let layoutMobile = (old && old.layoutMobile) ? old.layoutMobile : { h:'350px', w:'100%', fontSize: '14px', dockedHeight: '250px' };
+            
+            let currentFontSize = el.style.getPropertyValue('--font-size') || '14px';
+            const isDocked = el.classList.contains('docked-bottom');
+            layoutMobile.isDocked = isDocked;
 
-        // 前のデータを取得してマージ（反対側のデバイス設定を保持するため）
-        const tx = db.transaction([STORE_WINDOWS], 'readonly');
-        const old = await new Promise(r => { const req = tx.objectStore(STORE_WINDOWS).get(idNum); req.onsuccess = () => r(req.result); });
-        
-        // 既存データの読み込み（なければ初期値）
-        let layoutPC = (old && old.layoutPC) ? old.layoutPC : { x:'50px', y:'50px', w:'320px', h:'400px', z:100, fontSize: '14px' };
-        let layoutMobile = (old && old.layoutMobile) ? old.layoutMobile : { h:'350px', w:'100%', fontSize: '14px' };
-        
-        // 現在のフォントサイズを取得
-        let currentFontSize = el.style.getPropertyValue('--font-size') || '14px';
-
-        // ドッキング状態の保存
-        const isDocked = el.classList.contains('docked-bottom');
-        layoutMobile.isDocked = isDocked;
-
-        if (isMobile) { 
-            // モバイル操作時：モバイル用設定を更新
-            if(!isDocked) {
-                    layoutMobile.h = el.style.height; layoutMobile.w = el.style.width; 
+            if (isMobile) { 
+                if(isDocked) {
+                    // ドッキング中は、現在の高さをドッキング専用のプロパティに保存
+                    layoutMobile.dockedHeight = el.style.height;
+                } else {
+                    // 通常時は通常の高さ・幅を保存
+                    layoutMobile.h = el.style.height; 
+                    layoutMobile.w = el.style.width; 
+                }
+                layoutMobile.fontSize = currentFontSize;
+            } else { 
+                layoutPC.x = el.style.left; layoutPC.y = el.style.top; 
+                layoutPC.w = el.style.width; layoutPC.h = el.style.height; 
+                layoutPC.z = parseInt(el.style.zIndex || 100);
+                layoutPC.fontSize = currentFontSize;
             }
-            layoutMobile.fontSize = currentFontSize;
-            // PC用は old のまま維持
-        } else { 
-            // PC操作時：PC用設定を更新
-            layoutPC.x = el.style.left; layoutPC.y = el.style.top; 
-            layoutPC.w = el.style.width; layoutPC.h = el.style.height; 
-            layoutPC.z = parseInt(el.style.zIndex || 100);
-            layoutPC.fontSize = currentFontSize;
-            // モバイル用は old のまま維持
-        }
-        
-        // 旧仕様（ルートのfontSize）も互換性のため一応残すが、基本は layout オブジェクト内を使う
-        const data = {
-            id: idNum, title: titleInput.value, order: myOrder,
-            layoutPC: layoutPC, layoutMobile: layoutMobile, 
-            fontSize: currentFontSize, // 互換用
-            text: ta.value, hasMedia: hasMediaContent, mediaBlob: blob, mediaType: type
-        };
+            
+            const data = {
+                id: idNum, title: titleInput.value, order: myOrder,
+                layoutPC: layoutPC, layoutMobile: layoutMobile, 
+                fontSize: currentFontSize, 
+                text: ta.value, hasMedia: hasMediaContent, mediaBlob: blob, mediaType: type
+            };
 
-        return new Promise(res => {
-            const tx2 = db.transaction([STORE_WINDOWS], 'readwrite');
-            tx2.objectStore(STORE_WINDOWS).put(data);
-            tx2.oncomplete = () => { updateStatus('保存済', true); res(); };
-        });
-    }
+            return new Promise(res => {
+                const tx2 = db.transaction([STORE_WINDOWS], 'readwrite');
+                tx2.objectStore(STORE_WINDOWS).put(data);
+                tx2.oncomplete = () => { updateStatus('保存済', true); res(); };
+            });
+        }
         async function deleteWindowFromDB(id) {
             if(!db) return;
             const tx = db.transaction([STORE_WINDOWS], 'readwrite');
@@ -706,23 +711,27 @@
             let styleStr = "";
             let w = '320px', h = '400px', z = null;
             let isDocked = false;
-            
-            // フォントサイズの決定（引数で渡されなければデフォルト）
             let targetFontSize = fontSize || '14px';
 
             if (isMobile) {
+                // 通常時の高さ
                 h = (layoutMobile && layoutMobile.h) ? layoutMobile.h : '350px';
+                
+                // ドッキング時の高さ（保存されてなければ250px）
+                let dockedH = (layoutMobile && layoutMobile.dockedHeight) ? layoutMobile.dockedHeight : '250px';
+
                 let wMob = (layoutMobile && layoutMobile.w) ? layoutMobile.w : '100%';
                 if(layoutMobile && layoutMobile.isDocked) isDocked = true;
-                // 引数がnullだった場合、layoutMobile内のfontSizeを確認
+                
                 if (!fontSize && layoutMobile && layoutMobile.fontSize) targetFontSize = layoutMobile.fontSize;
                 
-                styleStr = `height:${h}; width:${wMob}; --font-size:${targetFontSize};`;
+                // もしドッキング状態なら、高さは dockedH を使う
+                let applyH = isDocked ? dockedH : h;
+
+                styleStr = `height:${applyH}; width:${wMob}; --font-size:${targetFontSize};`;
             } else {
                 if (layoutPC) { x = layoutPC.x; y = layoutPC.y; w = layoutPC.w; h = layoutPC.h; z = layoutPC.z; }
-                // 引数がnullだった場合、layoutPC内のfontSizeを確認
                 if (!fontSize && layoutPC && layoutPC.fontSize) targetFontSize = layoutPC.fontSize;
-
                 if(z===null || z===undefined){ zIndexCounter++; z=zIndexCounter; }
                 else if(z>zIndexCounter) zIndexCounter=z;
                 styleStr = `left:${x}; top:${y}; width:${w}; height:${h}; z-index:${z}; --font-size:${targetFontSize};`;
@@ -732,12 +741,17 @@
             div.className='window' + (isDocked ? ' docked-bottom' : '');
             div.id=winId; div.style.cssText = styleStr;
             
-            if(isDocked) updateCanvasPadding(250);
+            // ドッキング時ならキャンバスの余白もその高さ分確保
+            if(isDocked) updateCanvasPadding(parseInt(div.style.height, 10));
 
             const widthBtnLabel = (div.style.width === '100%' || !div.style.width) ? '1/2' : 'Full';
             const dockBtnClass = isDocked ? 'btn-active' : '';
 
             div.innerHTML=`
+                <!-- ▼ 新規追加: ドッキング時専用リサイズハンドル ▼ -->
+                <div class="dock-resize-handle mobile-only" ontouchstart="startDockResize(event, '${winId}')"></div>
+                <!-- ▲ ここまで ▲ -->
+
                 <div class="win-header" onmousedown="startDrag(event,'${winId}')">
                     <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', -1)">↑</button>
                     <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', 1)">↓</button>
@@ -747,7 +761,6 @@
                 </div>
                 <div class="win-body" onmousedown="bringToFront('${winId}')" ondragover="handleDragOver(event,this)" ondragleave="handleDragLeave(event,this)" ondrop="handleDrop(event,'${winId}')">
                     <div class="win-tools">
-                        <!-- ▼ グループ化: メディア表示時に隠れるボタン群 ▼ -->
                         <div class="tools-text-group">
                             <button class="btn-tool" onclick="pasteToArea(${idNum})">Paste</button>
                             <button class="btn-tool btn-format" onclick="formatContent(${idNum})">整形</button>
@@ -756,9 +769,7 @@
                             <button class="btn-tool" onclick="resetFontSize(${idNum})" title="Reset">Def</button>
                             <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, 2)">A+</button>
                         </div>
-                        <!-- ▲ グループ化ここまで ▲ -->
 
-                        <!-- 常に表示しておきたいボタンやメディア操作系 -->
                         <div style="flex-grow:1;"></div>
                         
                         <button class="btn-tool btn-danger" id="btn-media-del-${idNum}" onclick="closeMedia(${idNum})" title="メディア削除" style="display:none; padding:4px 6px;">🗑️</button>
@@ -785,7 +796,6 @@
             if(!isDocked) bringToFront(winId);
             return div;
         }
-
         function restoreWindow(r) {
             // 互換性のため古いfontSizeも考慮しつつ、addWindow側で判断させるためnullを渡すか検討
             // ここではあえて明示的に layoutPC/layoutMobile を渡すだけに留める
@@ -817,6 +827,52 @@
         }
         
         // --- Mobile Logic ---
+        // --- Dock Resize Logic (新規追加) ---
+        let dockingWin = null;
+        let dockStartY = 0;
+        let dockStartH = 0;
+
+        function startDockResize(e, winId) {
+            e.preventDefault();
+            e.stopPropagation(); // 親要素への伝播を止める
+            dockingWin = document.getElementById(winId);
+            const touch = e.touches[0];
+            dockStartY = touch.clientY;
+            // 現在の高さを取得
+            dockStartH = parseInt(window.getComputedStyle(dockingWin).height, 10);
+            
+            document.addEventListener('touchmove', onDockResizeMove, {passive: false});
+            document.addEventListener('touchend', onDockResizeEnd);
+        }
+
+        function onDockResizeMove(e) {
+            if (!dockingWin) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const diff = dockStartY - touch.clientY; // 上に動かすと(Yが減ると)高さが増える
+            let newH = dockStartH + diff;
+
+            // 最小・最大高さの制限
+            if (newH < 150) newH = 150;
+            if (newH > window.innerHeight - 50) newH = window.innerHeight - 50;
+
+            dockingWin.style.height = newH + 'px';
+            
+            // キャンバスの余白もリアルタイムで連動させる
+            updateCanvasPadding(newH);
+        }
+
+        function onDockResizeEnd(e) {
+            if (dockingWin) {
+                notifyChange(dockingWin.id); // 保存トリガー
+                // 最終的な高さで余白を確定
+                updateCanvasPadding(parseInt(dockingWin.style.height, 10));
+            }
+            dockingWin = null;
+            document.removeEventListener('touchmove', onDockResizeMove);
+            document.removeEventListener('touchend', onDockResizeEnd);
+        }
+
         function toggleMobileWidth(idNum) { 
             const win = document.getElementById(`win-${idNum}`); 
             const btn = document.getElementById(`btn-width-${idNum}`); 
@@ -827,25 +883,48 @@
         }
 
         // Dock Logic
-        function toggleDock(idNum) {
+        async function toggleDock(idNum) {
             const winId = `win-${idNum}`;
             const win = document.getElementById(winId);
             const btn = document.getElementById(`btn-dock-${idNum}`);
             const wasDocked = win.classList.contains('docked-bottom');
 
-            // 他にドッキングしているウィンドウがあれば解除する（1つのみ許可）
+            // 他にドッキングしているウィンドウがあれば解除
             document.querySelectorAll('.window.docked-bottom').forEach(w => {
                 w.classList.remove('docked-bottom');
+                // 解除時は高さを汎用の350pxなどに戻す（または保持していた値に戻す）
+                // ここでは簡易的に350pxに戻す設定にします
+                w.style.height = '350px'; 
+                
                 const oid = w.id.split('-')[1];
                 const b = document.getElementById(`btn-dock-${oid}`);
                 if(b) b.classList.remove('btn-active');
             });
 
             if(!wasDocked) {
+                // --- ドッキング開始 ---
+                
+                // DBから前回保存したドッキング時の高さを取得してみる
+                let savedDockH = '250px';
+                try {
+                    const tx = db.transaction([STORE_WINDOWS], 'readonly');
+                    const r = await new Promise(resolve => {
+                        const req = tx.objectStore(STORE_WINDOWS).get(idNum);
+                        req.onsuccess = () => resolve(req.result);
+                    });
+                    if(r && r.layoutMobile && r.layoutMobile.dockedHeight) {
+                        savedDockH = r.layoutMobile.dockedHeight;
+                    }
+                } catch(e) {}
+
                 win.classList.add('docked-bottom');
+                win.style.height = savedDockH; // 保存された高さ、または250px
+                
                 btn.classList.add('btn-active');
-                updateCanvasPadding(250); // 固定ウィンドウの高さ分
+                updateCanvasPadding(parseInt(savedDockH, 10));
             } else {
+                // --- ドッキング解除 ---
+                win.style.height = '350px'; // 通常時の高さに戻す
                 updateCanvasPadding(0);
             }
             notifyChange(winId);
