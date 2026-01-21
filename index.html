@@ -78,6 +78,9 @@
         #canvas {
             position: relative; flex-grow: 1; width: 100%; height: 100%; overflow: auto; 
             transition: padding-bottom 0.3s; /* ドッキング時の余白調整用 */
+            
+            /* ▼ 追加：デフォルトで下にたっぷりと余白を持たせる ▼ */
+            padding-bottom: 80px; 
         }
 
         /* --- ウィンドウ --- */
@@ -940,7 +943,9 @@
             notifyChange(winId);
         }
         function updateCanvasPadding(px) {
-            document.getElementById('canvas').style.paddingBottom = px + 'px';
+            // 常に確保したい余白（80px）＋ ドッキングウィンドウの高さ
+            const basePadding = 80;
+            document.getElementById('canvas').style.paddingBottom = (px + basePadding) + 'px';
         }
 
         function toggleMediaVisibility(idNum) {
