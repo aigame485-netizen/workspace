@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Creative Workspace v8.1</title>
+    <title>Creative Workspace v8.2</title>
     <style>
         /* --- 全体設定 --- */
         body {
@@ -28,11 +28,9 @@
         /* --- ボード表示 --- */
         .board-indicator {
             background-color: #2d3748; padding: 4px 10px; border-radius: 4px; border: 1px solid #4a5568;
-            font-size: 0.85rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 5px;
-            /* ★変更点: ここで右側の余白を最大に取り、後続のボタンを右端へ追いやる */
-            margin-right: auto; 
+            font-size: 0.85rem; color: #e2e8f0; cursor: default; display: flex; align-items: center; gap: 5px;
+            margin-right: auto; /* 右側の余白を最大に取る */
         }
-        .board-indicator:hover { background-color: #4a5568; border-color: #63b3ed; }
         .board-name { font-weight: bold; color: #63b3ed; }
 
         /* --- ボタン類 --- */
@@ -90,13 +88,12 @@
         
         .win-header {
             padding: 6px 8px; background-color: #2d3748; border-bottom: 1px solid #4a5568;
-            display: flex; align-items: center; /* space-between廃止 */
+            display: flex; align-items: center;
             cursor: move; user-select: none; flex-shrink: 0; gap: 5px;
         }
         
-        /* タイトル入力欄 (幅固定・伸縮させない) */
         .win-title-input {
-            width: 140px; flex-shrink: 0; /* ★変更点 */
+            width: 140px; flex-shrink: 0;
             background: transparent; border: 1px solid transparent;
             color: #e2e8f0; font-weight: bold; font-size: 0.85rem;
             padding: 2px 4px; border-radius: 4px; 
@@ -105,10 +102,7 @@
         .win-title-input:hover { border-color: #4a5568; background-color: #2d3748; }
         .win-title-input:focus { border-color: #63b3ed; background-color: #1a202c; outline: none; width: 180px; z-index: 10;}
 
-        /* ドラッグ専用の空白エリア */
-        .win-drag-area {
-            flex-grow: 1; height: 100%; cursor: move; /* ★変更点 */
-        }
+        .win-drag-area { flex-grow: 1; height: 100%; cursor: move; }
 
         .btn-header-icon { background: none; border: none; color: #a0aec0; cursor: pointer; font-size: 1rem; padding: 0 4px; }
         .btn-delete { color: #fc8181; font-size: 1.2rem; line-height: 1; border:none; background:none; cursor:pointer;}
@@ -213,16 +207,18 @@
 <body>
 
     <header>
-        <h1>Canvas v8.1</h1>
-        <div class="board-indicator" onclick="renameCurrentBoard()" title="名前を変更">
+        <h1>Canvas v8.2</h1>
+        
+        <!-- 名前表示 (クリック不可) -->
+        <div class="board-indicator">
             📁 <span id="current-board-name" class="board-name">default</span>
         </div>
-        
+
         <!-- 右寄せグループ -->
         <span id="status-indicator">Ready</span>
 
-        <button class="btn-control btn-cloud" onclick="openUploadModal()">☁️ UP</button>
-        <button class="btn-control btn-cloud" onclick="openDownloadModal()">📂 管理</button>
+        <!-- ボタンを一本化 -->
+        <button class="btn-control btn-cloud" onclick="openCloudModal()">☁️ クラウド接続</button>
 
         <div class="control-group">
             <label class="switch">
@@ -248,40 +244,44 @@
 
     <div id="canvas"></div>
 
-    <!-- UP (保存) モーダル -->
-    <div id="uploadModal" class="modal-overlay" onclick="if(event.target===this) closeModal('uploadModal')">
-        <div class="modal-box">
-            <h3 class="modal-title">クラウドへ保存 (UP)</h3>
+    <!-- 統合クラウド管理モーダル -->
+    <div id="cloudModal" class="modal-overlay" onclick="if(event.target===this) closeModal('cloudModal')">
+        <div class="modal-box" style="max-width: 450px;">
+            <h3 class="modal-title">☁️ クラウド連携</h3>
+            
             <div class="modal-body">
-                <p style="font-size:0.9rem;">現在のボード: <strong id="modal-up-current-name">default</strong></p>
-                <button class="btn-control btn-cloud" style="padding:10px; font-size:1rem;" onclick="processUpload(currentBoardName)">
-                    このボードに上書き保存
-                </button>
-                <hr style="border:0; border-top:1px solid #4a5568; width:100%;">
-                <label style="font-size:0.85rem;">または名前を付けて新規保存:</label>
-                <div class="input-group">
-                    <input type="text" id="newBoardInput" class="input-text" placeholder="新しいボード名">
-                    <button class="btn-control" onclick="processUploadNew()">保存</button>
+                <!-- 上段：保存エリア -->
+                <div style="background:#2d3748; padding-bottom:15px; border-bottom:2px dashed #4a5568; margin-bottom:10px;">
+                    <p style="margin:0 0 10px 0; font-size:0.9rem; color:#cbd5e0;">
+                        現在のボード: <strong id="cloud-current-name" style="color:#63b3ed; font-size:1.1rem;">default</strong>
+                    </p>
+                    
+                    <!-- 上書き保存ボタン -->
+                    <button class="btn-control btn-cloud" style="width:100%; padding:10px; margin-bottom:10px; font-size:1rem;" onclick="processUpload(currentBoardName)">
+                        ⬆️ この名前で上書き保存
+                    </button>
+                    
+                    <!-- 別名保存 -->
+                    <div class="input-group">
+                        <input type="text" id="newBoardInput" class="input-text" placeholder="新しい名前で保存...">
+                        <button class="btn-control" onclick="processUploadNew()">新規保存</button>
+                    </div>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-control" onclick="closeModal('uploadModal')">キャンセル</button>
-            </div>
-        </div>
-    </div>
 
-    <!-- DOWN (読込) モーダル -->
-    <div id="downloadModal" class="modal-overlay" onclick="if(event.target===this) closeModal('downloadModal')">
-        <div class="modal-box">
-            <h3 class="modal-title">クラウドから読込 (DOWN)</h3>
-            <div class="modal-body">
-                <p style="font-size:0.85rem; color:#cbd5e0;">読み込むボードを選択してください:</p>
-                <div id="downloadList" class="board-list">
-                    <div style="text-align:center; color:#718096;">読み込み中...</div>
+                <!-- 下段：ファイルリストエリア -->
+                <div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                        <span style="font-size:0.85rem; color:#a0aec0;">クラウド上のファイル一覧:</span>
+                        <button class="btn-mini" style="background:none; border:1px solid #4a5568; color:#cbd5e0;" onclick="refreshBoardList()">↻ 更新</button>
+                    </div>
+                    <div id="cloudList" class="board-list" style="height:250px;">
+                        <div style="text-align:center; color:#718096; padding:20px;">読み込み中...</div>
+                    </div>
                 </div>
             </div>
+
             <div class="modal-footer">
-                <button class="btn-control" onclick="closeModal('downloadModal')">閉じる</button>
+                <button class="btn-control" onclick="closeModal('cloudModal')">閉じる</button>
             </div>
         </div>
     </div>
@@ -344,37 +344,88 @@
 
         function updateBoardDisplay() {
             document.getElementById('current-board-name').textContent = currentBoardName;
-            document.getElementById('modal-up-current-name').textContent = currentBoardName;
+            document.getElementById('cloud-current-name').textContent = currentBoardName;
         }
-        async function renameCurrentBoard() {
-            const newName = prompt("現在のボード名を変更しますか？", currentBoardName);
-            if(newName && newName.trim() !== "" && newName !== currentBoardName) {
-                currentBoardName = newName.trim();
-                await setSetting('current_board_name', currentBoardName);
-                updateBoardDisplay();
-            }
-        }
+
+        // --- クラウド連携関連 ---
 
         function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
-        async function openUploadModal() {
-            await manualSaveAll(); 
-            document.getElementById('uploadModal').classList.add('show');
-            document.getElementById('modal-up-current-name').textContent = currentBoardName;
+        // 1. モーダルを開く（保存と一覧を同時に表示）
+        async function openCloudModal() {
+            await manualSaveAll(); // ローカル保存
+            document.getElementById('cloudModal').classList.add('show');
+            
+            // 現在のボード名を表示
+            updateBoardDisplay();
             document.getElementById('newBoardInput').value = "";
+            
+            // リストを更新
+            refreshBoardList();
         }
+
+        // 2. リスト取得
+        async function refreshBoardList() {
+            const listEl = document.getElementById('cloudList');
+            listEl.innerHTML = '<div style="text-align:center; color:#718096; padding:20px;">一覧を取得中...</div>';
+            
+            const pass = await getAuthPassword();
+            if(!pass) { listEl.innerHTML='<div style="text-align:center;">認証が必要です</div>'; return; }
+
+            try {
+                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=list`;
+                const res = await fetch(url, { method: 'POST' });
+                
+                const text = await res.text();
+                let json;
+                try { json = JSON.parse(text); } catch(e) { throw new Error("サーバー応答エラー"); }
+
+                if(json.status === 'success') {
+                    listEl.innerHTML = '';
+                    if(json.boards.length === 0) {
+                        listEl.innerHTML = '<div style="padding:20px; text-align:center; color:#cbd5e0;">ファイルがありません</div>';
+                    } else {
+                        json.boards.forEach(name => {
+                            const div = document.createElement('div');
+                            div.className = 'file-row';
+                            const isCurrent = (name === currentBoardName);
+                            const nameDisplay = isCurrent ? `👉 ${name}` : `📄 ${name}`;
+                            const bgStyle = isCurrent ? 'border-left: 3px solid #48bb78; background-color:#2f855a;' : '';
+                            
+                            div.style.cssText = bgStyle;
+                            div.innerHTML = `
+                                <div class="file-name" onclick="processDownload('${name}')">${nameDisplay}</div>
+                                <div class="file-actions">
+                                    <button class="btn-mini btn-load" onclick="processDownload('${name}')">読込</button>
+                                    <button class="btn-mini btn-trash" onclick="deleteBoard('${name}')">削除</button>
+                                </div>
+                            `;
+                            listEl.appendChild(div);
+                        });
+                    }
+                } else {
+                    if(json.message && json.message.includes("合言葉")) await clearAuthPassword();
+                    throw new Error(json.message);
+                }
+            } catch(e) { 
+                listEl.innerHTML = `<div style="color:#f56565; padding:10px; text-align:center;">エラー: ${e.message}</div>`; 
+            }
+        }
+
+        // 3. 新規保存処理
         async function processUploadNew() {
             const name = document.getElementById('newBoardInput').value.trim();
             if(!name) return alert("名前を入力してください");
             processUpload(name);
         }
+
+        // 4. アップロード処理（完了後にリストを更新）
         async function processUpload(boardName) {
             const pass = await getAuthPassword();
-            if (!pass) return alert("中止");
+            if (!pass) return;
             if(!confirm(`ボード「${boardName}」としてクラウドに保存しますか？`)) return;
             
-            closeModal('uploadModal');
-            updateStatus("変換中...", false);
+            updateStatus("送信中...", false);
             
             try {
                 const tx = db.transaction([STORE_WINDOWS], 'readonly');
@@ -392,160 +443,99 @@
                         text: r.text, hasMedia: r.hasMedia, mediaType: r.mediaType, mediaBase64: b64
                     });
                 }
-                updateStatus("送信中...", false);
+
                 const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&boardName=${encodeURIComponent(boardName)}`;
                 const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(exportData) });
-                if(!res.ok) throw new Error("HTTP " + res.status);
                 const json = await res.json();
                 
                 if(json.status === 'success') { 
                     currentBoardName = boardName;
                     await setSetting('current_board_name', currentBoardName);
-                    updateBoardDisplay();
-                    updateStatus("UP完了", true); 
-                    alert(`[${currentBoardName}] 保存完了！`); 
+                    
+                    updateBoardDisplay(); 
+                    document.getElementById('newBoardInput').value = "";
+                    
+                    updateStatus("保存完了", true); 
+                    alert(`[${currentBoardName}] 保存しました`);
+                    
+                    refreshBoardList(); // リスト更新
                 } else { 
-                    if(json.message.includes("合言葉")) await clearAuthPassword(); 
                     throw new Error(json.message); 
                 }
             } catch(e) { console.error(e); updateStatus("UP失敗", false, true); alert(e.message); }
         }
 
-        async function openDownloadModal() {
-        // ※ 削除機能をつけるため、事前の自動保存は必須ではありませんが、
-        // 誤操作で現在の作業が消えないよう念の為保存しておきます
-        await manualSaveAll(); 
+        // 5. 削除処理
+        async function deleteBoard(boardName) {
+            if(!confirm(`本当にクラウド上の「${boardName}」を削除しますか？\n（復元できません）`)) return;
 
-        document.getElementById('downloadModal').classList.add('show');
-        // タイトルも変更
-        document.querySelector('#downloadModal .modal-title').textContent = "クラウドファイル管理";
-        
-        await refreshBoardList();
-    }
-
-    async function refreshBoardList() {
-        const listEl = document.getElementById('downloadList');
-        listEl.innerHTML = '<div style="text-align:center; color:#718096; padding:20px;">一覧を取得中...</div>';
-        
-        const pass = await getAuthPassword();
-        if(!pass) { listEl.innerHTML='<div style="text-align:center;">認証が必要です</div>'; return; }
-
-        try {
-            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=list`;
-            const res = await fetch(url, { method: 'POST' });
+            updateStatus("削除中...", false);
+            const pass = await getAuthPassword();
             
-            // レスポンスチェック (JSONパースエラー対策)
-            const text = await res.text();
-            let json;
-            try { json = JSON.parse(text); } 
-            catch(e) { throw new Error("サーバー応答エラー: パスワード間違い待機中、またはデータ破損"); }
+            try {
+                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=delete&boardName=${encodeURIComponent(boardName)}`;
+                const res = await fetch(url, { method: 'POST' });
+                const json = await res.json();
 
-            if(json.status === 'success') {
-                listEl.innerHTML = '';
-                if(json.boards.length === 0) {
-                    listEl.innerHTML = '<div style="padding:20px; text-align:center; color:#cbd5e0;">保存されたボードはありません</div>';
+                if(json.status === 'success') {
+                    updateStatus("削除完了", true);
+                    refreshBoardList();
                 } else {
-                    json.boards.forEach(name => {
-                        const div = document.createElement('div');
-                        div.className = 'file-row';
-                        const isCurrent = (name === currentBoardName);
-                        
-                        // 現在のボードにはマークをつける
-                        const nameDisplay = isCurrent ? `👉 ${name}` : `📄 ${name}`;
-                        const bgStyle = isCurrent ? 'border-left: 3px solid #48bb78;' : '';
-                        div.style.cssText = bgStyle;
-
-                        div.innerHTML = `
-                            <div class="file-name" onclick="processDownload('${name}')">${nameDisplay}</div>
-                            <div class="file-actions">
-                                <button class="btn-mini btn-load" onclick="processDownload('${name}')">読込</button>
-                                <button class="btn-mini btn-trash" onclick="deleteBoard('${name}')">削除</button>
-                            </div>
-                        `;
-                        listEl.appendChild(div);
-                    });
+                    throw new Error(json.message);
                 }
-            } else {
-                if(json.message && json.message.includes("合言葉")) await clearAuthPassword();
-                throw new Error(json.message || "不明なエラー");
+            } catch(e) {
+                alert("削除失敗: " + e.message);
+                updateStatus("削除失敗", false, true);
             }
-        } catch(e) { 
-            listEl.innerHTML = `<div style="color:#f56565; padding:10px; text-align:center;">エラー: ${e.message}</div>`; 
         }
-    }
 
-    async function deleteBoard(boardName) {
-        if(!confirm(`本当にクラウド上の「${boardName}」を削除しますか？\n（復元できません）`)) return;
-
-        updateStatus("削除中...", false);
-        const pass = await getAuthPassword();
-        
-        try {
-            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=delete&boardName=${encodeURIComponent(boardName)}`;
-            const res = await fetch(url, { method: 'POST' });
-            const json = await res.json();
-
-            if(json.status === 'success') {
-                updateStatus("削除完了", true);
-                // リストを再読込
-                await refreshBoardList();
-            } else {
-                throw new Error(json.message);
-            }
-        } catch(e) {
-            alert("削除失敗: " + e.message);
-            updateStatus("削除失敗", false, true);
-        }
-    }
-
-    async function processDownload(boardName) {
-        if(!confirm(`ボード「${boardName}」を読み込みますか？\n(現在の作業内容は上書きされます)`)) return;
-        closeModal('downloadModal');
-        
-        // ... (以下、元の processDownload のロジックそのまま)
-        updateStatus("受信中...", false);
-        const pass = await getAuthPassword(); 
-        try {
-            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=download&boardName=${encodeURIComponent(boardName)}`;
-            const res = await fetch(url, { method: 'POST', body: "" });
+        // 6. ダウンロード処理
+        async function processDownload(boardName) {
+            if(!confirm(`ボード「${boardName}」を読み込みますか？\n(現在の作業内容は上書きされます)`)) return;
             
-            // JSONパース修正
-            const text = await res.text();
-            let importData;
-            try { importData = JSON.parse(text); } 
-            catch(e) { throw new Error("JSON Parse Error"); }
+            updateStatus("受信中...", false);
+            const pass = await getAuthPassword(); 
+            try {
+                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=download&boardName=${encodeURIComponent(boardName)}`;
+                const res = await fetch(url, { method: 'POST', body: "" });
+                const text = await res.text();
+                let importData;
+                try { importData = JSON.parse(text); } catch(e) { throw new Error("JSON Parse Error"); }
+                if (importData.status === 'error') throw new Error(importData.message);
 
-            if (importData.status === 'error') throw new Error(importData.message);
+                await clearAllData(true); 
 
-            updateStatus("展開中...", false);
-            await clearAllData(true); 
+                for(let i=0; i<importData.length; i++) {
+                    let r = importData[i];
+                    let blob = null;
+                    if(r.hasMedia && r.mediaBase64) blob = await base64ToBlob(r.mediaBase64);
+                    if(blob) blobCache[r.id] = { blob: blob, type: r.mediaType };
+                    let lPC = r.layoutPC || { x: r.x||'50px', y: r.y||'50px', w: r.w||'320px', h: r.h||'400px', z: r.z||100 };
+                    let lMob = r.layoutMobile || { h: '350px', w: '100%' };
+                    let fSize = r.fontSize || '14px';
+                    let title = r.title || `Window ${r.id}`;
+                    let order = (r.order !== undefined) ? r.order : i;
+                    const record = {
+                        id: r.id, title: title, order: order,
+                        layoutPC: lPC, layoutMobile: lMob, fontSize: fSize,
+                        text: r.text, hasMedia: r.hasMedia, mediaBlob: blob, mediaType: r.mediaType
+                    };
+                    const tx = db.transaction([STORE_WINDOWS], 'readwrite');
+                    tx.objectStore(STORE_WINDOWS).put(record);
+                }
+                currentBoardName = boardName;
+                await setSetting('current_board_name', currentBoardName);
+                
+                updateBoardDisplay();
+                loadFromDB();
+                
+                closeModal('cloudModal'); 
+                updateStatus("読込完了", true);
+                alert(`読み込み完了: ${boardName}`);
+            } catch(e) { console.error(e); updateStatus("DOWN失敗", false, true); alert(e.message); }
+        }
 
-            for(let i=0; i<importData.length; i++) {
-                let r = importData[i];
-                let blob = null;
-                if(r.hasMedia && r.mediaBase64) blob = await base64ToBlob(r.mediaBase64);
-                if(blob) blobCache[r.id] = { blob: blob, type: r.mediaType };
-                let lPC = r.layoutPC || { x: r.x||'50px', y: r.y||'50px', w: r.w||'320px', h: r.h||'400px', z: r.z||100 };
-                let lMob = r.layoutMobile || { h: '350px', w: '100%' };
-                let fSize = r.fontSize || '14px';
-                let title = r.title || `Window ${r.id}`;
-                let order = (r.order !== undefined) ? r.order : i;
-                const record = {
-                    id: r.id, title: title, order: order,
-                    layoutPC: lPC, layoutMobile: lMob, fontSize: fSize,
-                    text: r.text, hasMedia: r.hasMedia, mediaBlob: blob, mediaType: r.mediaType
-                };
-                const tx = db.transaction([STORE_WINDOWS], 'readwrite');
-                tx.objectStore(STORE_WINDOWS).put(record);
-            }
-            currentBoardName = boardName;
-            await setSetting('current_board_name', currentBoardName);
-            updateBoardDisplay();
-            loadFromDB();
-            updateStatus("DOWN完了", true);
-            alert(`読み込み完了: ${boardName}`);
-        } catch(e) { console.error(e); updateStatus("DOWN失敗", false, true); alert(e.message); }
-    }
+        // --- 共通ユーティリティ ---
 
         function blobToBase64(blob) { return new Promise((r,j)=>{const z=new FileReader();z.onloadend=()=>r(z.result);z.onerror=j;z.readAsDataURL(blob);}); }
         async function base64ToBlob(b64) { const r=await fetch(b64); return await r.blob(); }
