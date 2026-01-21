@@ -246,6 +246,14 @@
         
         <!-- UI非表示ボタン -->
         <button class="btn-control btn-ui-toggle" onclick="toggleMinimalUI()" title="UI表示切替">👁️</button>
+        <!-- 連動スイッチ -->
+        <div class="control-group" style="margin-right:5px;">
+             <label class="switch">
+                <input type="checkbox" id="syncToggle">
+                <span class="slider"></span>
+            </label>
+            <label for="syncToggle" class="switch-label">連動</label>
+        </div>
 
         <!-- 名前表示 -->
         <div class="board-indicator">
@@ -269,13 +277,7 @@
         <button class="btn-control btn-danger" onclick="clearAllData()">🗑️</button>
         
         <div style="width:10px;"></div>
-        <div class="control-group">
-             <label class="switch">
-                <input type="checkbox" id="syncToggle">
-                <span class="slider"></span>
-            </label>
-            <label for="syncToggle" class="switch-label">連動</label>
-        </div>
+
     </header>
 
     <div id="canvas"></div>
@@ -707,22 +709,30 @@
                     <div class="win-tools">
                         <button class="btn-tool" onclick="pasteToArea(${idNum})">Paste</button>
                         <button class="btn-tool btn-format" onclick="formatContent(${idNum})">整形</button>
+                        
+                        <!-- ★ここにメディア削除ボタンを追加（初期は非表示 display:none） -->
+                        <button class="btn-tool btn-danger" id="btn-media-del-${idNum}" onclick="closeMedia(${idNum})" title="メディア削除" style="display:none; padding:4px 6px;">🗑️</button>
+
                         <div style="flex-grow:1;"></div>
                         <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, -2)">A-</button>
                         <button class="btn-tool" onclick="resetFontSize(${idNum})" title="Reset">Def</button>
                         <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, 2)">A+</button>
                         
-                        <!-- モバイル用追加機能群 -->
                         <button class="btn-tool mobile-only" id="btn-width-${idNum}" onclick="toggleMobileWidth(${idNum})">${widthBtnLabel}</button>
                         <button class="btn-tool mobile-only ${dockBtnClass}" id="btn-dock-${idNum}" onclick="toggleDock(${idNum})" title="画面下に固定">⚓</button>
+                        
+                        <!-- 表示切替ボタン（これは残す） -->
                         <button class="btn-tool" id="btn-media-toggle-${idNum}" onclick="toggleMediaVisibility(${idNum})" title="メディア表示切替" style="display:none;">🎬</button>
                     </div>
+                    
                     <textarea id="text-${idNum}" style="font-size:${fontSize};" oninput="notifyChange('${winId}')"></textarea>
                     
+                    <!-- メディアレイヤー（削除ボタンはここから除去） -->
                     <div id="media-${idNum}" class="media-layer">
-                        <button class="btn-close-media" onclick="closeMedia(${idNum})">🗑️ 削除</button>
+                        <!-- ★ここにあった btn-close-media は削除しました★ -->
                         <div id="media-content-${idNum}" style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;"></div>
                     </div>
+                    
                     <div class="mobile-resize-handle" onmousedown="event.stopPropagation()" ontouchstart="startMobileResize(event, '${winId}')"></div>
                 </div>`;
             
@@ -854,8 +864,10 @@
             if(el){ 
                 el.className='media-content'; c.appendChild(el); 
                 document.getElementById(`media-${id}`).classList.add('show');
-                // メディアトグルボタンを表示
+                
+                // ★追加：2つのボタンを表示状態にする
                 document.getElementById(`btn-media-toggle-${id}`).style.display = 'inline-block';
+                document.getElementById(`btn-media-del-${id}`).style.display = 'inline-block';
             } 
         }
         function handleDragOver(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.add('drag-over-active'); }
@@ -868,7 +880,11 @@
             if(c.firstChild) URL.revokeObjectURL(c.firstChild.src); 
             c.innerHTML=''; 
             delete blobCache[id]; 
+            
+            // ★追加：2つのボタンを非表示に戻す
             document.getElementById(`btn-media-toggle-${id}`).style.display = 'none';
+            document.getElementById(`btn-media-del-${id}`).style.display = 'none';
+            
             notifyChange('win-'+id); 
         }
     </script>
