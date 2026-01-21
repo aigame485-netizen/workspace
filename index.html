@@ -268,7 +268,7 @@
             }
         }
 
-        async function downloadFromCloud() {
+async function downloadFromCloud() {
             const pass = getPassword();
             if (!pass) return alert("合言葉が必要です中止します");
 
@@ -276,14 +276,25 @@
             updateStatus("受信中...", false);
 
             try {
-                // ★ URLに合言葉(?auth=...)を付けて取得する
-                const urlWithAuth = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}`;
+                // ★ 変更点: action=download を追加
+                const urlWithAuth = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=download`;
                 
-                const response = await fetch(urlWithAuth);
-                if(!response.ok) throw new Error("HTTP Status: " + response.status);
-                const importData = await response.json();
+                // ★ 変更点: GET ではなく POST メソッドを使う
+                // body は空でよいが、POSTメソッドにすることでリダイレクト問題を回避する
+                const response = await fetch(urlWithAuth, {
+                    method: 'POST',
+                    body: "" // 空のボディを送る
+                });
 
-                // エラー応答の場合（合言葉違いなど）
+                if(!response.ok) throw new Error("HTTP Status: " + response.status);
+                
+                // HTMLエラーが返ってきていないかチェック（念のため）
+                const text = await response.text();
+                if(text.trim().startsWith("<")) throw new Error("GASからHTMLエラーが返されました。");
+
+                const importData = JSON.parse(text);
+
+                // エラー応答の場合
                 if (importData.status === 'error') {
                     cachedPassword = "";
                     throw new Error(importData.message);
