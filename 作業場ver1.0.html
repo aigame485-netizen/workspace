@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creative Workspace v4.1</title>
+    <style>
+        /* --- 全体設定 --- */
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            background-color: #1a202c;
+            background-image: radial-gradient(#2d3748 1px, transparent 1px);
+            background-size: 20px 20px;
+            color: #e2e8f0; margin: 0; padding: 0; height: 100vh;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* --- ヘッダー --- */
+        header {
+            background-color: #171923; border-bottom: 1px solid #4a5568;
+            padding: 0 10px; height: 50px; display: flex; align-items: center;
+            gap: 10px; flex-shrink: 0; z-index: 10000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5); overflow-x: auto; white-space: nowrap;
+        }
+        header::-webkit-scrollbar { display: none; } 
+        h1 { font-size: 1rem; color: #a0aec0; margin-right: auto; font-weight: normal; margin-left: 5px;}
+
+        /* --- ボタン類 --- */
+        .control-group {
+            display: flex; align-items: center; gap: 8px;
+            background-color: #2d3748; padding: 4px 8px;
+            border-radius: 4px; border: 1px solid #4a5568;
+        }
+        .btn-control {
+            background-color: #2b6cb0; color: white; border: none;
+            padding: 6px 12px; border-radius: 4px; cursor: pointer;
+            font-size: 0.8rem; transition: all 0.2s;
+        }
+        .btn-control:hover { background-color: #3182ce; }
+        .btn-control:disabled { background-color: #4a5568; cursor: not-allowed; opacity: 0.7; }
+        .btn-danger { background-color: #9b2c2c; }
+        .btn-cloud { background-color: #d69e2e; color: #1a202c; font-weight: bold; }
+        .btn-cloud:hover { background-color: #ecc94b; }
+
+        .switch-label { font-size: 0.75rem; color: #cbd5e0; cursor: pointer; user-select: none; margin-left: 5px;}
+        .switch { position: relative; display: inline-block; width: 30px; height: 16px; vertical-align: middle; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #4a5568; transition: .4s; border-radius: 16px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 12px; width: 12px; left: 2px; bottom: 2px;
+            background-color: white; transition: .4s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: #48bb78; }
+        input:checked + .slider:before { transform: translateX(14px); }
+
+        #status-indicator { font-size: 0.75rem; color: #ecc94b; min-width: 50px; text-align: right; margin-right: 5px;}
+        #status-indicator.saved { color: #48bb78; }
+        #status-indicator.error { color: #f56565; }
+
+        /* --- キャンバス --- */
+        #canvas {
+            position: relative; flex-grow: 1; width: 100%; height: 100%;
+            overflow: auto; 
+        }
+
+        /* --- ウィンドウ --- */
+        .window {
+            position: absolute; background-color: #222630;
+            border: 1px solid #4a5568; border-radius: 6px;
+            display: flex; flex-direction: column;
+            width: 320px; height: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            resize: both; overflow: hidden; 
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .window.active { border-color: #63b3ed; box-shadow: 0 15px 35px rgba(0,0,0,0.7); }
+        .win-header {
+            padding: 8px 12px; background-color: #2d3748; border-bottom: 1px solid #4a5568;
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: move; user-select: none; flex-shrink: 0;
+        }
+        .win-title { font-size: 0.85rem; font-weight: bold; color: #e2e8f0; }
+        .btn-delete { background: none; border: none; color: #718096; cursor: pointer; font-size: 1.2rem; line-height: 1; }
+        .win-body { flex-grow: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        .win-tools { padding: 5px 10px; background-color: #1a202c; display: flex; flex-shrink: 0; }
+        
+        textarea {
+            flex-grow: 1; width: 100%; background-color: #222630; color: #e2e8f0;
+            border: none; padding: 10px; resize: none; font-size: 14px; line-height: 1.7; outline: none;
+            box-sizing: border-box; border-top: 1px solid #2d3748;
+        }
+        .btn-format, .btn-paste { cursor: pointer; border: none; color: #e2e8f0; }
+        .btn-paste { background-color: #4a5568; border-radius: 3px; padding: 3px 8px; font-size: 0.75rem; }
+        .btn-format { width: 100%; background-color: #553c9a; color: #e9d8fd; border-top: 1px solid #4a5568; padding: 10px; font-weight: bold; flex-shrink: 0; }
+
+        /* メディア */
+        .media-layer {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #000;
+            display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 10;
+        }
+        .media-layer.show { display: flex; }
+        .media-content { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .btn-close-media {
+            position: absolute; top: 10px; right: 10px; background-color: rgba(0,0,0,0.6);
+            color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 10px; cursor: pointer;
+        }
+
+        /* --- スマホ用レスポンシブ (768px以下) --- */
+        @media (max-width: 768px) {
+            h1 { display: none; }
+            header { gap: 8px; padding: 0 8px; }
+            .btn-control { padding: 6px 8px; font-size: 0.75rem; }
+            
+            #canvas {
+                padding: 10px; box-sizing: border-box;
+                display: flex; flex-direction: column; gap: 20px; 
+                overflow-y: auto; 
+            }
+            .window {
+                position: relative !important; left: auto !important; top: auto !important;
+                width: 100% !important; height: 350px !important;
+                margin-bottom: 0; z-index: 1 !important; flex-shrink: 0;
+            }
+            .win-header { cursor: default; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Canvas v4.1</h1>
+        <span id="status-indicator">Ready</span>
+
+        <button class="btn-control btn-cloud" onclick="uploadToCloud()">☁️ UP</button>
+        <button class="btn-control btn-cloud" onclick="downloadFromCloud()">☁️ DOWN</button>
+
+        <div class="control-group">
+            <label class="switch">
+                <input type="checkbox" id="autoSaveToggle" onchange="toggleAutoSave()">
+                <span class="slider"></span>
+            </label>
+            <label for="autoSaveToggle" class="switch-label">Auto</label>
+        </div>
+
+        <button class="btn-control" id="btn-manual-save" onclick="manualSaveAll()">💾 保存</button>
+        <button class="btn-control" onclick="createNewWindow()">＋</button>
+        <button class="btn-control btn-danger" onclick="clearAllData()">🗑️</button>
+        
+        <div style="width:10px;"></div>
+        <div class="control-group">
+             <label class="switch">
+                <input type="checkbox" id="syncToggle">
+                <span class="slider"></span>
+            </label>
+            <label for="syncToggle" class="switch-label">連動</label>
+        </div>
+    </header>
+
+    <div id="canvas"></div>
+
+    <script>
+        // ==========================================
+        //  【重要】ここにGASの新しいウェブアプリURLを貼る
+        // ==========================================
+        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fEklillB729ge_b9-q9afAZPartKazdS9-6u8xkfDercVRaLl2/exec"; 
+        // ==========================================
+
+        const DB_NAME = 'CreativeWorkspaceDB_v4';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'windows';
+
+        let db = null;
+        let zIndexCounter = 100;
+        let isAutoSaveEnabled = false;
+        let isSaving = false;
+        let saveTimers = {};
+        let blobCache = {};
+
+        window.onload = async function() {
+            if(GAS_API_URL.includes("ここに")) alert("HTMLコード内の GAS_API_URL を設定してください！");
+            await initDB();
+            loadFromDB();
+        };
+
+        // --- クラウド同期 (text/plain方式) ---
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+        async function base64ToBlob(base64) {
+            const res = await fetch(base64);
+            return await res.blob();
+        }
+
+        // 毎回入力するのは面倒なので、ブラウザに合言葉を覚えさせる変数
+        let cachedPassword = "";
+
+        function getPassword() {
+            // すでにメモリにあればそれを使う、なければ聞く
+            if (cachedPassword) return cachedPassword;
+            const pass = prompt("セキュリティ保護のため、合言葉を入力してください");
+            if (pass) cachedPassword = pass;
+            return pass;
+        }
+
+        async function uploadToCloud() {
+            const pass = getPassword();
+            if (!pass) return alert("合言葉が必要です中止します");
+
+            if(!confirm("クラウド(Google Drive)に保存しますか？\n(既存データは上書きされます)")) return;
+            updateStatus("変換中...", false);
+            
+            try {
+                // (DB取得部分は同じなので省略せず記述します)
+                const tx = db.transaction([STORE_NAME], 'readonly');
+                const req = tx.objectStore(STORE_NAME).getAll();
+                const records = await new Promise(r => req.onsuccess = () => r(req.result));
+
+                const exportData = [];
+                for(let r of records) {
+                    let b64 = null;
+                    if(r.hasMedia && r.mediaBlob) {
+                        b64 = await blobToBase64(r.mediaBlob);
+                    }
+                    exportData.push({
+                        id: r.id, x: r.x, y: r.y, w: r.w, h: r.h, z: r.z,
+                        text: r.text,
+                        hasMedia: r.hasMedia,
+                        mediaType: r.mediaType,
+                        mediaBase64: b64
+                    });
+                }
+
+                updateStatus("送信中...", false);
+
+                // ★ URLに合言葉(?auth=...)を付けて送信する
+                const urlWithAuth = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}`;
+
+                const response = await fetch(urlWithAuth, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' }, 
+                    body: JSON.stringify(exportData)
+                });
+
+                if(!response.ok) throw new Error("HTTP Status: " + response.status);
+                const resJson = await response.json();
+                
+                if(resJson.status === 'success') {
+                    updateStatus("UP完了", true);
+                    alert("クラウド保存完了！");
+                } else {
+                    // 合言葉間違いなどのエラー
+                    cachedPassword = ""; // パスワード間違ってるかもしれないのでクリア
+                    throw new Error(resJson.message);
+                }
+
+            } catch(e) {
+                console.error(e);
+                updateStatus("UP失敗", false, true);
+                alert("エラー:\n" + e.message);
+            }
+        }
+
+        async function downloadFromCloud() {
+            const pass = getPassword();
+            if (!pass) return alert("合言葉が必要です中止します");
+
+            if(!confirm("クラウドから読み込みますか？\n(現在の作業内容は消えます)")) return;
+            updateStatus("受信中...", false);
+
+            try {
+                // ★ URLに合言葉(?auth=...)を付けて取得する
+                const urlWithAuth = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}`;
+                
+                const response = await fetch(urlWithAuth);
+                if(!response.ok) throw new Error("HTTP Status: " + response.status);
+                const importData = await response.json();
+
+                // エラー応答の場合（合言葉違いなど）
+                if (importData.status === 'error') {
+                    cachedPassword = "";
+                    throw new Error(importData.message);
+                }
+
+                if(!Array.isArray(importData)) throw new Error("データ形式が不正か、データが空です");
+
+                updateStatus("展開中...", false);
+                await clearAllData(true);
+
+                for(let r of importData) {
+                    let blob = null;
+                    if(r.hasMedia && r.mediaBase64) {
+                        blob = await base64ToBlob(r.mediaBase64);
+                    }
+                    if(blob) blobCache[r.id] = { blob: blob, type: r.mediaType };
+
+                    const record = {
+                        id: r.id, x: r.x, y: r.y, w: r.w, h: r.h, z: r.z,
+                        text: r.text,
+                        hasMedia: r.hasMedia,
+                        mediaBlob: blob,
+                        mediaType: r.mediaType
+                    };
+                    const tx = db.transaction([STORE_NAME], 'readwrite');
+                    tx.objectStore(STORE_NAME).put(record);
+                }
+                loadFromDB();
+                updateStatus("DOWN完了", true);
+                alert("読み込み完了！");
+
+            } catch(e) {
+                console.error(e);
+                updateStatus("DOWN失敗", false, true);
+                alert("エラー: " + e.message);
+            }
+        }
+        // --- IndexedDB ---
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const r = indexedDB.open(DB_NAME, DB_VERSION);
+                r.onupgradeneeded = (e) => {
+                    const d = e.target.result;
+                    if (!d.objectStoreNames.contains(STORE_NAME)) d.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                };
+                r.onsuccess = (e) => { db = e.target.result; resolve(db); };
+                r.onerror = (e) => reject(e);
+            });
+        }
+        async function saveWindowToDB(winId) {
+            if (!db) return;
+            const el = document.getElementById(winId);
+            if (!el) return;
+            const idNum = parseInt(winId.split('-')[1]);
+            const isMobile = window.innerWidth <= 768;
+
+            const tx = db.transaction([STORE_NAME], 'readonly');
+            const old = await new Promise(r => {
+                const req = tx.objectStore(STORE_NAME).get(idNum);
+                req.onsuccess = () => r(req.result);
+            });
+
+            const rect = el.getBoundingClientRect();
+            let x = el.style.left;
+            let y = el.style.top;
+            let w = el.style.width;
+            let h = el.style.height;
+
+            if (isMobile && old) {
+                x = old.x; y = old.y; w = old.w; h = old.h;
+            } else {
+                if(!x || x==='auto') x = rect.left + 'px';
+                if(!y || y==='auto') y = rect.top + 'px';
+                if(!w || w==='auto') w = rect.width + 'px';
+                if(!h || h==='auto') h = rect.height + 'px';
+            }
+
+            const ta = el.querySelector('textarea');
+            const mediaLayer = document.getElementById(`media-${idNum}`);
+            const isMediaShow = mediaLayer.classList.contains('show');
+            let blob = null, type = null;
+            if (isMediaShow && blobCache[idNum]) {
+                blob = blobCache[idNum].blob;
+                type = blobCache[idNum].type;
+            }
+
+            const data = {
+                id: idNum, x: x, y: y, w: w, h: h,
+                z: parseInt(el.style.zIndex || 100),
+                text: ta.value,
+                hasMedia: isMediaShow, mediaBlob: blob, mediaType: type
+            };
+
+            return new Promise(res => {
+                const tx2 = db.transaction([STORE_NAME], 'readwrite');
+                tx2.objectStore(STORE_NAME).put(data);
+                tx2.oncomplete = () => { updateStatus('保存済', true); res(); };
+            });
+        }
+        async function deleteWindowFromDB(idNum) {
+            if(!db) return;
+            const tx = db.transaction([STORE_NAME], 'readwrite');
+            tx.objectStore(STORE_NAME).delete(idNum);
+            delete blobCache[idNum];
+        }
+        async function loadFromDB() {
+            if(!db) return;
+            document.getElementById('canvas').innerHTML = '';
+            const tx = db.transaction([STORE_NAME], 'readonly');
+            const req = tx.objectStore(STORE_NAME).getAll();
+            req.onsuccess = (e) => {
+                const r = e.target.result;
+                r.sort((a,b)=>a.id-b.id);
+                if(r.length===0){ addWindow(50,50,1); addWindow(400,50,2); }
+                else r.forEach(rec => restoreWindow(rec));
+                updateStatus('Ready', true);
+            };
+        }
+        async function clearAllData(skip=false) {
+            if(!skip && !confirm("全削除しますか？")) return;
+            document.getElementById('canvas').innerHTML='';
+            blobCache={};
+            const tx = db.transaction([STORE_NAME], 'readwrite');
+            tx.objectStore(STORE_NAME).clear();
+            if(!skip) updateStatus('削除完了', true);
+        }
+
+        // --- UI ---
+        function toggleAutoSave() {
+            isAutoSaveEnabled = document.getElementById('autoSaveToggle').checked;
+            document.getElementById('btn-manual-save').disabled = isAutoSaveEnabled;
+        }
+        function notifyChange(winId) {
+            if (!isAutoSaveEnabled) return;
+            if (saveTimers[winId]) clearTimeout(saveTimers[winId]);
+            updateStatus('変更...', false);
+            saveTimers[winId] = setTimeout(async () => {
+                if(isSaving) { notifyChange(winId); return; }
+                isSaving=true;
+                try { await saveWindowToDB(winId); } finally { isSaving=false; delete saveTimers[winId]; }
+            }, 1000);
+        }
+        async function manualSaveAll() {
+            if(isSaving) return;
+            isSaving=true;
+            document.getElementById('btn-manual-save').disabled=true;
+            updateStatus('保存中...', false);
+            const wins=document.querySelectorAll('.window');
+            for(const w of wins) await saveWindowToDB(w.id);
+            isSaving=false;
+            updateStatus('保存完了', true);
+            if(!isAutoSaveEnabled) document.getElementById('btn-manual-save').disabled=false;
+        }
+        function updateStatus(m,s,e=false) {
+            const el=document.getElementById('status-indicator');
+            el.textContent=m; el.className='';
+            if(s) el.classList.add('saved');
+            if(e) el.classList.add('error');
+        }
+
+        // --- Window ---
+        function createNewWindow() {
+            let max=0;
+            document.querySelectorAll('.window').forEach(w=>{
+                const id=parseInt(w.id.split('-')[1]);
+                if(id>max) max=id;
+            });
+            addWindow(50,50,max+1);
+        }
+        function addWindow(x,y,idNum,w='320px',h='400px',z=null) {
+            const winId='win-'+idNum;
+            if(z===null){ zIndexCounter++; z=zIndexCounter; }
+            else if(z>zIndexCounter) zIndexCounter=z;
+
+            const cvs=document.getElementById('canvas');
+            const div=document.createElement('div');
+            div.className='window'; div.id=winId;
+            div.style.left=x+(typeof x==='number'? 'px':'');
+            div.style.top=y+(typeof y==='number'? 'px':'');
+            div.style.width=w; div.style.height=h; div.style.zIndex=z;
+
+            div.innerHTML=`
+                <div class="win-header" onmousedown="startDrag(event,'${winId}')">
+                    <span class="win-title">Window ${idNum}</span>
+                    <button class="btn-delete" onclick="removeWindow('${winId}')">×</button>
+                </div>
+                <div class="win-body" onmousedown="bringToFront('${winId}')"
+                     ondragover="handleDragOver(event,this)" ondragleave="handleDragLeave(event,this)"
+                     ondrop="handleDrop(event,'${winId}')">
+                    <div class="win-tools"><button class="btn-paste" onclick="pasteToArea(${idNum})">📋</button></div>
+                    <textarea id="text-${idNum}" oninput="notifyChange('${winId}')"></textarea>
+                    <button class="btn-format" onclick="formatContent(${idNum})">整形</button>
+                    <div id="media-${idNum}" class="media-layer">
+                        <button class="btn-close-media" onclick="closeMedia(${idNum})">×</button>
+                        <div id="media-content-${idNum}" style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;"></div>
+                    </div>
+                </div>`;
+            cvs.appendChild(div);
+
+            div.addEventListener('mouseup', ()=> { if(currentDragWin!==div) notifyChange(winId); });
+            div.querySelector('textarea').addEventListener('scroll', (e)=>{
+                if(document.getElementById('syncToggle').checked) {
+                    const t=e.target.scrollTop;
+                    document.querySelectorAll('textarea').forEach(ta=>{ if(ta!==e.target && ta.offsetParent) ta.scrollTop=t; });
+                }
+            });
+            bringToFront(winId);
+            return div;
+        }
+        function restoreWindow(r) {
+            const w = addWindow(r.x,r.y,r.id,r.w,r.h,r.z);
+            if(r.text) w.querySelector('textarea').value=r.text;
+            if(r.hasMedia && r.mediaBlob) {
+                blobCache[r.id]={blob:r.mediaBlob, type:r.mediaType};
+                showMedia(r.id, r.mediaBlob, r.mediaType);
+            }
+        }
+        function removeWindow(id) {
+            const el=document.getElementById(id);
+            if(el){ el.remove(); deleteWindowFromDB(parseInt(id.split('-')[1])); }
+        }
+
+        // --- Media ---
+        function showMedia(id,blob,type) {
+            const c=document.getElementById(`media-content-${id}`);
+            c.innerHTML='';
+            const url=URL.createObjectURL(blob);
+            let el;
+            if(type.startsWith('image/')) { el=document.createElement('img'); el.src=url; }
+            else if(type.startsWith('video/')) {
+                el=document.createElement('video'); el.src=url;
+                el.controls=true; el.loop=true; el.muted=true; el.playsInline=true;
+            }
+            if(el){ el.className='media-content'; c.appendChild(el); document.getElementById(`media-${id}`).classList.add('show'); }
+        }
+        function handleDragOver(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.add('drag-over-active'); }
+        function handleDragLeave(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.remove('drag-over-active'); }
+        function handleDrop(e,winId){
+            e.preventDefault(); e.stopPropagation();
+            document.getElementById(winId).classList.remove('drag-over-active');
+            const f=e.dataTransfer.files[0];
+            if(!f)return;
+            const id=parseInt(winId.split('-')[1]);
+            blobCache[id]={blob:f, type:f.type};
+            showMedia(id,f,f.type);
+            notifyChange(winId);
+        }
+        function closeMedia(id){
+            document.getElementById(`media-${id}`).classList.remove('show');
+            const c=document.getElementById(`media-content-${id}`);
+            if(c.firstChild) URL.revokeObjectURL(c.firstChild.src);
+            c.innerHTML='';
+            delete blobCache[id];
+            notifyChange('win-'+id);
+        }
+
+        // --- Drag (PC) ---
+        let currentDragWin=null, dx=0, dy=0;
+        function startDrag(e,id) {
+            if(window.innerWidth<=768)return;
+            if(e.target.tagName==='BUTTON')return;
+            const w=document.getElementById(id);
+            bringToFront(id);
+            currentDragWin=w;
+            dx=e.clientX-w.offsetLeft; dy=e.clientY-w.offsetTop;
+            document.addEventListener('mousemove',onMouseMove);
+            document.addEventListener('mouseup',onMouseUp);
+        }
+        function onMouseMove(e){
+            if(!currentDragWin)return;
+            let nx=e.clientX-dx, ny=e.clientY-dy;
+            if(ny<0)ny=0;
+            currentDragWin.style.left=nx+'px'; currentDragWin.style.top=ny+'px';
+        }
+        function onMouseUp(){
+            if(currentDragWin) notifyChange(currentDragWin.id);
+            currentDragWin=null;
+            document.removeEventListener('mousemove',onMouseMove);
+            document.removeEventListener('mouseup',onMouseUp);
+        }
+        function bringToFront(id){
+            const w=document.getElementById(id);
+            zIndexCounter++; w.style.zIndex=zIndexCounter;
+            document.querySelectorAll('.window').forEach(e=>e.classList.remove('active'));
+            w.classList.add('active');
+            notifyChange(id);
+        }
+
+        // --- Utils ---
+        async function pasteToArea(id){
+            try{
+                const t=await navigator.clipboard.readText();
+                document.getElementById('text-'+id).value=t; notifyChange('win-'+id);
+            }catch(e){alert('ペースト権限なし');}
+        }
+        function formatContent(id){
+            const ta=document.getElementById('text-'+id);
+            let t=ta.value; if(!t)return;
+            t=t.replace(/\r\n/g,'\n').replace(/([^\n])(【)/g,'$1\n\n$2')
+               .replace(/\s+(\d+\.)/g,'\n$1')
+               .replace(/([^\n])(「)/g,(m,p1,p2)=> /[\d\.\s]/.test(p1)?m:p1+'\n'+p2)
+               .replace(/(」)(\s+)(\d+\.)/g,'$1\n$3');
+            ta.value=t; notifyChange('win-'+id);
+        }
+    </script>
+</body>
+</html>
