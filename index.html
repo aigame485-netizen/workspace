@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Creative Workspace v5.0</title>
+    <title>Creative Workspace v6.0</title>
     <style>
         /* --- 全体設定 --- */
         body {
@@ -63,7 +63,7 @@
         /* --- キャンバス --- */
         #canvas {
             position: relative; flex-grow: 1; width: 100%; height: 100%;
-            overflow: auto; /* PCでもスクロール可能に */
+            overflow: auto; 
         }
 
         /* --- ウィンドウ (PCデフォルト) --- */
@@ -73,25 +73,37 @@
             display: flex; flex-direction: column;
             width: 320px; height: 400px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            resize: both; overflow: hidden; /* PCは縦横リサイズ */
+            resize: both; overflow: hidden;
             transition: border-color 0.2s, box-shadow 0.2s;
-            min-width: 200px; min-height: 150px;
+            min-width: 150px; min-height: 150px;
+            box-sizing: border-box; /* パディングを含めて幅計算 */
         }
         .window.active { border-color: #63b3ed; box-shadow: 0 15px 35px rgba(0,0,0,0.7); }
         
         .win-header {
-            padding: 8px 12px; background-color: #2d3748; border-bottom: 1px solid #4a5568;
+            padding: 6px 8px; background-color: #2d3748; border-bottom: 1px solid #4a5568;
             display: flex; justify-content: space-between; align-items: center;
-            cursor: move; user-select: none; flex-shrink: 0;
+            cursor: move; user-select: none; flex-shrink: 0; gap: 5px;
         }
-        .win-title { font-size: 0.85rem; font-weight: bold; color: #e2e8f0; }
-        .btn-delete { background: none; border: none; color: #718096; cursor: pointer; font-size: 1.2rem; line-height: 1; }
+        
+        /* タイトル入力欄 */
+        .win-title-input {
+            flex-grow: 1; background: transparent; border: 1px solid transparent;
+            color: #e2e8f0; font-weight: bold; font-size: 0.85rem;
+            padding: 2px 4px; border-radius: 4px; min-width: 0;
+        }
+        .win-title-input:hover { border-color: #4a5568; background-color: #2d3748; }
+        .win-title-input:focus { border-color: #63b3ed; background-color: #1a202c; outline: none; }
+
+        .btn-header-icon { background: none; border: none; color: #a0aec0; cursor: pointer; font-size: 1rem; padding: 0 4px; }
+        .btn-header-icon:hover { color: #fff; }
+        .btn-delete { color: #fc8181; font-size: 1.2rem; line-height: 1; }
         
         .win-body { flex-grow: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
         
         .win-tools { 
-            padding: 5px 10px; background-color: #1a202c; display: flex; align-items: center; 
-            gap: 5px; flex-shrink: 0; border-bottom: 1px solid #2d3748;
+            padding: 5px; background-color: #1a202c; display: flex; align-items: center; 
+            gap: 4px; flex-shrink: 0; border-bottom: 1px solid #2d3748; flex-wrap: wrap;
         }
         
         textarea {
@@ -101,12 +113,20 @@
         }
         
         /* ツールボタン */
-        .btn-tool { cursor: pointer; border: none; color: #e2e8f0; background-color: #4a5568; border-radius: 3px; padding: 3px 8px; font-size: 0.75rem; }
+        .btn-tool { cursor: pointer; border: none; color: #e2e8f0; background-color: #4a5568; border-radius: 3px; padding: 4px 8px; font-size: 0.7rem; white-space: nowrap;}
         .btn-tool:hover { background-color: #718096; }
-        .btn-font { font-family: monospace; font-weight: bold; width: 30px; }
-
-        .btn-format { width: 100%; background-color: #553c9a; color: #e9d8fd; border: none; border-top: 1px solid #4a5568; padding: 10px; font-weight: bold; flex-shrink: 0; cursor: pointer;}
+        .btn-font { font-family: monospace; font-weight: bold; width: 24px; padding: 4px 0; text-align: center; }
+        .btn-format { background-color: #553c9a; color: #e9d8fd; }
         .btn-format:hover { background-color: #6b46c1; }
+
+        /* スマホ用リサイズハンドル */
+        .mobile-resize-handle {
+            height: 12px; background-color: #2d3748; cursor: row-resize; flex-shrink: 0;
+            display: none; justify-content: center; align-items: center;
+        }
+        .mobile-resize-handle::after {
+            content: ""; width: 40px; height: 4px; background-color: #4a5568; border-radius: 2px;
+        }
 
         /* メディアレイヤー */
         .media-layer {
@@ -120,6 +140,10 @@
             color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 10px; cursor: pointer;
         }
 
+        /* --- モバイル専用・PC専用クラス --- */
+        .mobile-only { display: none; }
+        .pc-only { display: block; }
+
         /* --- スマホ用レスポンシブ (768px以下) --- */
         @media (max-width: 768px) {
             h1 { display: none; }
@@ -128,25 +152,29 @@
             
             #canvas {
                 padding: 10px; box-sizing: border-box;
-                display: flex; flex-direction: column; gap: 20px; 
+                display: flex; flex-wrap: wrap; /* 横並び許可 */
+                align-content: flex-start; /* 上詰め */
+                gap: 10px; 
                 overflow-y: auto; 
             }
             .window {
-                /* スマホは相対配置で縦並び */
                 position: relative !important; left: auto !important; top: auto !important;
-                width: 100% !important; 
-                /* 高さはJSで制御するが、CSSでのリサイズを許可（縦のみ） */
-                resize: vertical !important; 
+                /* デフォルトは100%だが、JSで50%などに切り替える */
+                resize: none !important; /* CSSリサイズは無効化し、カスタムハンドルを使う */
                 margin-bottom: 0; z-index: 1 !important; flex-shrink: 0;
             }
             .win-header { cursor: default; }
+            .mobile-resize-handle { display: flex; } /* ハンドル表示 */
+            
+            .mobile-only { display: inline-block; }
+            .pc-only { display: none; }
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>Canvas v5.0</h1>
+        <h1>Canvas v6.0</h1>
         <span id="status-indicator">Ready</span>
 
         <button class="btn-control btn-cloud" onclick="uploadToCloud()">☁️ UP</button>
@@ -183,8 +211,8 @@
         const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fEklillB729ge_b9-q9afAZPartKazdS9-6u8xkfDercVRaLl2/exec"; 
         // ==========================================
 
-        const DB_NAME = 'CreativeWorkspaceDB_v5';
-        const DB_VERSION = 2; // バージョンアップ（settingsストア追加のため）
+        const DB_NAME = 'CreativeWorkspaceDB_v6';
+        const DB_VERSION = 3; // v6用
         const STORE_WINDOWS = 'windows';
         const STORE_SETTINGS = 'settings';
 
@@ -200,32 +228,27 @@
             loadFromDB();
         };
 
-        // --- Auth (IndexedDBに保存) ---
+        // --- Auth ---
         async function getAuthPassword() {
-            // 1. DBから取得試行
             try {
                 const tx = db.transaction([STORE_SETTINGS], 'readonly');
                 const req = tx.objectStore(STORE_SETTINGS).get('auth_password');
                 const res = await new Promise(r => req.onsuccess = () => r(req.result));
                 if (res && res.value) return res.value;
-            } catch(e) { console.error(e); }
-
-            // 2. なければ入力
+            } catch(e) {}
             const pass = prompt("セキュリティ保護のため、合言葉を入力してください");
             if (pass) {
-                // 保存
                 const tx = db.transaction([STORE_SETTINGS], 'readwrite');
                 tx.objectStore(STORE_SETTINGS).put({ key: 'auth_password', value: pass });
             }
             return pass;
         }
-
         async function clearAuthPassword() {
             const tx = db.transaction([STORE_SETTINGS], 'readwrite');
             tx.objectStore(STORE_SETTINGS).delete('auth_password');
         }
 
-        // --- Cloud Logic (Sync前の保存、Auth保存、POST通信) ---
+        // --- Cloud (省略なし) ---
         function blobToBase64(blob) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -240,29 +263,27 @@
         }
 
         async function uploadToCloud() {
-            // 1. まずローカル保存
             await manualSaveAll();
-
             const pass = await getAuthPassword();
-            if (!pass) return alert("合言葉が必要です中止します");
-
-            if(!confirm("クラウド(Google Drive)に保存しますか？\n(既存データは上書きされます)")) return;
+            if (!pass) return alert("中止します");
+            if(!confirm("クラウドにUPしますか？")) return;
             updateStatus("変換中...", false);
             
             try {
                 const tx = db.transaction([STORE_WINDOWS], 'readonly');
+                // 並び順(order)でソートして送るため取得後にソート
                 const req = tx.objectStore(STORE_WINDOWS).getAll();
-                const records = await new Promise(r => req.onsuccess = () => r(req.result));
+                let records = await new Promise(r => req.onsuccess = () => r(req.result));
+                records.sort((a,b) => (a.order || 0) - (b.order || 0));
 
                 const exportData = [];
                 for(let r of records) {
                     let b64 = null;
-                    if(r.hasMedia && r.mediaBlob) {
-                        b64 = await blobToBase64(r.mediaBlob);
-                    }
-                    // そのまま全プロパティ（layoutPC, layoutMobile含む）を出す
+                    if(r.hasMedia && r.mediaBlob) b64 = await blobToBase64(r.mediaBlob);
                     exportData.push({
                         id: r.id, 
+                        title: r.title, // 追加
+                        order: r.order, // 追加
                         layoutPC: r.layoutPC,
                         layoutMobile: r.layoutMobile,
                         fontSize: r.fontSize,
@@ -272,117 +293,62 @@
                         mediaBase64: b64
                     });
                 }
-
                 updateStatus("送信中...", false);
-
-                // URLにパラメータ、Bodyにデータ
                 const urlWithAuth = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}`;
-
-                const response = await fetch(urlWithAuth, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' }, 
-                    body: JSON.stringify(exportData)
-                });
-
-                if(!response.ok) throw new Error("HTTP Status: " + response.status);
+                const response = await fetch(urlWithAuth, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(exportData) });
+                if(!response.ok) throw new Error("HTTP " + response.status);
                 const resJson = await response.json();
-                
-                if(resJson.status === 'success') {
-                    updateStatus("UP完了", true);
-                    alert("クラウド保存完了！");
-                } else {
-                    // 合言葉ミスなど
-                    if(resJson.message.includes("合言葉")) {
-                        await clearAuthPassword();
-                    }
-                    throw new Error(resJson.message);
-                }
-
-            } catch(e) {
-                console.error(e);
-                updateStatus("UP失敗", false, true);
-                alert("エラー:\n" + e.message);
-            }
+                if(resJson.status === 'success') { updateStatus("UP完了", true); alert("完了"); } 
+                else { if(resJson.message.includes("合言葉")) await clearAuthPassword(); throw new Error(resJson.message); }
+            } catch(e) { console.error(e); updateStatus("UP失敗", false, true); alert(e.message); }
         }
 
         async function downloadFromCloud() {
-            // 1. まずローカル保存 (念のため)
             await manualSaveAll();
-
             const pass = await getAuthPassword();
-            if (!pass) return alert("合言葉が必要です中止します");
-
-            if(!confirm("クラウドから読み込みますか？\n(現在の作業内容は消えます)")) return;
+            if (!pass) return alert("中止します");
+            if(!confirm("クラウドから読み込みますか？")) return;
             updateStatus("受信中...", false);
-
             try {
-                // POSTで action=download を送る
                 const urlWithAuth = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=download`;
-                
-                const response = await fetch(urlWithAuth, {
-                    method: 'POST',
-                    body: "" 
-                });
-
-                if(!response.ok) throw new Error("HTTP Status: " + response.status);
-                
+                const response = await fetch(urlWithAuth, { method: 'POST', body: "" });
+                if(!response.ok) throw new Error("HTTP " + response.status);
                 const text = await response.text();
-                if(text.trim().startsWith("<")) throw new Error("GASからHTMLエラーが返されました。");
-
+                if(text.trim().startsWith("<")) throw new Error("GAS HTML Error");
                 const importData = JSON.parse(text);
-
-                if (importData.status === 'error') {
-                    if(importData.message.includes("合言葉")) {
-                        await clearAuthPassword();
-                    }
-                    throw new Error(importData.message);
-                }
-
-                if(!Array.isArray(importData)) throw new Error("データ形式が不正か、データが空です");
-
+                if (importData.status === 'error') { if(importData.message.includes("合言葉")) await clearAuthPassword(); throw new Error(importData.message); }
+                
                 updateStatus("展開中...", false);
                 await clearAllData(true);
 
-                for(let r of importData) {
+                for(let i=0; i<importData.length; i++) {
+                    let r = importData[i];
                     let blob = null;
-                    if(r.hasMedia && r.mediaBase64) {
-                        blob = await base64ToBlob(r.mediaBase64);
-                    }
+                    if(r.hasMedia && r.mediaBase64) blob = await base64ToBlob(r.mediaBase64);
                     if(blob) blobCache[r.id] = { blob: blob, type: r.mediaType };
 
-                    // 旧データ(v4以前)との互換性チェック
-                    let lPC = r.layoutPC;
-                    if (!lPC && r.w) { // v4データの場合、直下のx,y,w,hをPCレイアウトにする
-                        lPC = { x: r.x, y: r.y, w: r.w, h: r.h, z: r.z };
-                    }
-                    let lMob = r.layoutMobile || { h: '350px' };
+                    // 互換性
+                    let lPC = r.layoutPC || { x: r.x||'50px', y: r.y||'50px', w: r.w||'320px', h: r.h||'400px', z: r.z||100 };
+                    let lMob = r.layoutMobile || { h: '350px', w: '100%' };
                     let fSize = r.fontSize || '14px';
+                    let title = r.title || `Window ${r.id}`;
+                    let order = (r.order !== undefined) ? r.order : i;
 
                     const record = {
-                        id: r.id, 
-                        layoutPC: lPC,
-                        layoutMobile: lMob,
-                        fontSize: fSize,
-                        text: r.text,
-                        hasMedia: r.hasMedia,
-                        mediaBlob: blob,
-                        mediaType: r.mediaType
+                        id: r.id, title: title, order: order,
+                        layoutPC: lPC, layoutMobile: lMob, fontSize: fSize,
+                        text: r.text, hasMedia: r.hasMedia, mediaBlob: blob, mediaType: r.mediaType
                     };
                     const tx = db.transaction([STORE_WINDOWS], 'readwrite');
                     tx.objectStore(STORE_WINDOWS).put(record);
                 }
                 loadFromDB();
                 updateStatus("DOWN完了", true);
-                alert("読み込み完了！");
-
-            } catch(e) {
-                console.error(e);
-                updateStatus("DOWN失敗", false, true);
-                alert("エラー: " + e.message);
-            }
+                alert("完了");
+            } catch(e) { console.error(e); updateStatus("DOWN失敗", false, true); alert(e.message); }
         }
 
-        // --- IndexedDB ---
+        // --- DB ---
         function initDB() {
             return new Promise((resolve, reject) => {
                 const r = indexedDB.open(DB_NAME, DB_VERSION);
@@ -409,44 +375,37 @@
                 req.onsuccess = () => r(req.result);
             });
 
-            // 現在のデータを取得
-            const rect = el.getBoundingClientRect();
             const ta = el.querySelector('textarea');
+            const titleInput = el.querySelector('.win-title-input');
             const mediaLayer = document.getElementById(`media-${idNum}`);
             const isMediaShow = mediaLayer.classList.contains('show');
             let blob = null, type = null;
-            if (isMediaShow && blobCache[idNum]) {
-                blob = blobCache[idNum].blob;
-                type = blobCache[idNum].type;
-            }
+            if (isMediaShow && blobCache[idNum]) { blob = blobCache[idNum].blob; type = blobCache[idNum].type; }
 
-            // 新しいデータ構造を作成
-            // 既存データがあればそれをベースにする
-            let layoutPC = old && old.layoutPC ? old.layoutPC : { x:'50px', y:'50px', w:'320px', h:'400px', z:100 };
-            let layoutMobile = old && old.layoutMobile ? old.layoutMobile : { h:'350px' };
-            let fontSize = el.style.getPropertyValue('--font-size') || (old ? old.fontSize : '14px');
+            // 現在のDOM順序を取得して order を更新
+            const allWins = Array.from(document.getElementById('canvas').children);
+            const myOrder = allWins.indexOf(el);
 
-            // 画面モードに合わせてレイアウト情報を更新
+            let layoutPC = (old && old.layoutPC) ? old.layoutPC : { x:'50px', y:'50px', w:'320px', h:'400px', z:100 };
+            let layoutMobile = (old && old.layoutMobile) ? old.layoutMobile : { h:'350px', w:'100%' };
+            let fontSize = el.style.getPropertyValue('--font-size') || '14px';
+
             if (isMobile) {
-                // スマホ時：高さのみ更新 (幅は100%固定、X/Y無効)
-                // スマホのリサイズは style.height に反映される
-                layoutMobile.h = el.style.height; 
+                // スマホ: 高さ(style.height) と 幅(style.widthが50%か100%か)
+                layoutMobile.h = el.style.height;
+                layoutMobile.w = el.style.width; // '100%' or 'calc(50% - ...)'
             } else {
-                // PC時：x, y, w, h, z を更新
-                layoutPC.x = el.style.left;
-                layoutPC.y = el.style.top;
-                layoutPC.w = el.style.width;
-                layoutPC.h = el.style.height;
+                layoutPC.x = el.style.left; layoutPC.y = el.style.top;
+                layoutPC.w = el.style.width; layoutPC.h = el.style.height;
                 layoutPC.z = parseInt(el.style.zIndex || 100);
             }
 
             const data = {
                 id: idNum,
-                layoutPC: layoutPC,
-                layoutMobile: layoutMobile,
-                fontSize: fontSize,
-                text: ta.value,
-                hasMedia: isMediaShow, mediaBlob: blob, mediaType: type
+                title: titleInput.value,
+                order: myOrder,
+                layoutPC: layoutPC, layoutMobile: layoutMobile, fontSize: fontSize,
+                text: ta.value, hasMedia: isMediaShow, mediaBlob: blob, mediaType: type
             };
 
             return new Promise(res => {
@@ -455,28 +414,29 @@
                 tx2.oncomplete = () => { updateStatus('保存済', true); res(); };
             });
         }
-
-        async function deleteWindowFromDB(idNum) {
+        async function deleteWindowFromDB(id) {
             if(!db) return;
             const tx = db.transaction([STORE_WINDOWS], 'readwrite');
-            tx.objectStore(STORE_WINDOWS).delete(idNum);
-            delete blobCache[idNum];
+            tx.objectStore(STORE_WINDOWS).delete(id);
+            delete blobCache[id];
         }
-
         async function loadFromDB() {
             if(!db) return;
             document.getElementById('canvas').innerHTML = '';
             const tx = db.transaction([STORE_WINDOWS], 'readonly');
             const req = tx.objectStore(STORE_WINDOWS).getAll();
             req.onsuccess = (e) => {
-                const r = e.target.result;
-                r.sort((a,b)=>a.id-b.id);
+                let r = e.target.result;
+                // order順にソート (orderがない古いデータはID順)
+                r.sort((a,b) => {
+                    if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
+                    return a.id - b.id;
+                });
                 if(r.length===0){ addWindow(50,50,1); addWindow(400,50,2); }
                 else r.forEach(rec => restoreWindow(rec));
                 updateStatus('Ready', true);
             };
         }
-
         async function clearAllData(skip=false) {
             if(!skip && !confirm("全削除しますか？")) return;
             document.getElementById('canvas').innerHTML='';
@@ -486,11 +446,8 @@
             if(!skip) updateStatus('削除完了', true);
         }
 
-        // --- UI Utils ---
-        function toggleAutoSave() {
-            isAutoSaveEnabled = document.getElementById('autoSaveToggle').checked;
-            document.getElementById('btn-manual-save').disabled = isAutoSaveEnabled;
-        }
+        // --- Common UI ---
+        function toggleAutoSave() { isAutoSaveEnabled = document.getElementById('autoSaveToggle').checked; document.getElementById('btn-manual-save').disabled = isAutoSaveEnabled; }
         function notifyChange(winId) {
             if (!isAutoSaveEnabled) return;
             if (saveTimers[winId]) clearTimeout(saveTimers[winId]);
@@ -503,55 +460,43 @@
         }
         async function manualSaveAll() {
             if(isSaving) return;
-            isSaving=true;
-            document.getElementById('btn-manual-save').disabled=true;
+            isSaving=true; document.getElementById('btn-manual-save').disabled=true;
             updateStatus('保存中...', false);
             const wins=document.querySelectorAll('.window');
+            // DOM順に保存することでorderを更新
             for(const w of wins) await saveWindowToDB(w.id);
-            isSaving=false;
-            updateStatus('保存完了', true);
+            isSaving=false; updateStatus('保存完了', true);
             if(!isAutoSaveEnabled) document.getElementById('btn-manual-save').disabled=false;
         }
         function updateStatus(m,s,e=false) {
-            const el=document.getElementById('status-indicator');
-            el.textContent=m; el.className='';
-            if(s) el.classList.add('saved');
-            if(e) el.classList.add('error');
+            const el=document.getElementById('status-indicator'); el.textContent=m; el.className='';
+            if(s) el.classList.add('saved'); if(e) el.classList.add('error');
         }
 
-        // --- Window Operations ---
+        // --- Window Core ---
         function createNewWindow() {
             let max=0;
-            document.querySelectorAll('.window').forEach(w=>{
-                const id=parseInt(w.id.split('-')[1]);
-                if(id>max) max=id;
-            });
+            document.querySelectorAll('.window').forEach(w=>{ const id=parseInt(w.id.split('-')[1]); if(id>max) max=id; });
             addWindow(50,50,max+1);
         }
 
-        function addWindow(x,y,idNum, layoutPC=null, layoutMobile=null, fontSize='14px') {
+        function addWindow(x,y,idNum, layoutPC=null, layoutMobile=null, fontSize='14px', title=null) {
             const winId='win-'+idNum;
             const isMobile = window.innerWidth <= 768;
+            const initialTitle = title || `Window ${idNum}`;
 
-            // レイアウト決定
             let styleStr = "";
             let w = '320px', h = '400px', z = null;
 
             if (isMobile) {
-                // スマホ: DBのlayoutMobile.h または デフォルト
                 h = (layoutMobile && layoutMobile.h) ? layoutMobile.h : '350px';
-                // スマホはCSSで強制配置されるので、inline styleには高さだけ設定する
-                styleStr = `height:${h}; --font-size:${fontSize};`;
+                // 幅はDB値(100% or 48%等) またはデフォルト100%
+                let wMob = (layoutMobile && layoutMobile.w) ? layoutMobile.w : '100%';
+                styleStr = `height:${h}; width:${wMob}; --font-size:${fontSize};`;
             } else {
-                // PC: DBのlayoutPC または 引数x,y
-                if (layoutPC) {
-                    x = layoutPC.x; y = layoutPC.y; w = layoutPC.w; h = layoutPC.h; z = layoutPC.z;
-                } else {
-                    w = '320px'; h = '400px'; 
-                }
+                if (layoutPC) { x = layoutPC.x; y = layoutPC.y; w = layoutPC.w; h = layoutPC.h; z = layoutPC.z; }
                 if(z===null || z===undefined){ zIndexCounter++; z=zIndexCounter; }
                 else if(z>zIndexCounter) zIndexCounter=z;
-
                 styleStr = `left:${x}; top:${y}; width:${w}; height:${h}; z-index:${z}; --font-size:${fontSize};`;
             }
 
@@ -560,9 +505,14 @@
             div.className='window'; div.id=winId;
             div.style.cssText = styleStr;
 
+            // 幅切替ボタンのラベル決定
+            const widthBtnLabel = (div.style.width === '100%' || !div.style.width) ? '1/2' : 'Full';
+
             div.innerHTML=`
                 <div class="win-header" onmousedown="startDrag(event,'${winId}')">
-                    <span class="win-title">Window ${idNum}</span>
+                    <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', -1)">↑</button>
+                    <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', 1)">↓</button>
+                    <input type="text" class="win-title-input" value="${initialTitle}" onchange="notifyChange('${winId}')" onmousedown="event.stopPropagation()">
                     <button class="btn-delete" onclick="removeWindow('${winId}')">×</button>
                 </div>
                 <div class="win-body" onmousedown="bringToFront('${winId}')"
@@ -570,24 +520,27 @@
                      ondrop="handleDrop(event,'${winId}')">
                     
                     <div class="win-tools">
-                        <button class="btn-tool" onclick="pasteToArea(${idNum})">📋 Paste</button>
+                        <button class="btn-tool" onclick="pasteToArea(${idNum})">Paste</button>
+                        <button class="btn-tool btn-format" onclick="formatContent(${idNum})">整形</button>
                         <div style="flex-grow:1;"></div>
                         <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, -2)">A-</button>
-                        <button class="btn-tool" onclick="resetFontSize(${idNum})" title="デフォルト(14px)に戻す">Def</button>
+                        <button class="btn-tool" onclick="resetFontSize(${idNum})" title="Reset">Def</button>
                         <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, 2)">A+</button>
+                        <button class="btn-tool mobile-only" id="btn-width-${idNum}" onclick="toggleMobileWidth(${idNum})">${widthBtnLabel}</button>
                     </div>
 
                     <textarea id="text-${idNum}" style="font-size:${fontSize};" oninput="notifyChange('${winId}')"></textarea>
                     
-                    <button class="btn-format" onclick="formatContent(${idNum})">整形</button>
                     <div id="media-${idNum}" class="media-layer">
                         <button class="btn-close-media" onclick="closeMedia(${idNum})">×</button>
                         <div id="media-content-${idNum}" style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;"></div>
                     </div>
+
+                    <!-- スマホ用リサイズハンドル -->
+                    <div class="mobile-resize-handle" onmousedown="event.stopPropagation()" ontouchstart="startMobileResize(event, '${winId}')"></div>
                 </div>`;
             cvs.appendChild(div);
 
-            // イベントリスナー
             div.addEventListener('mouseup', ()=> { if(currentDragWin!==div) notifyChange(winId); });
             div.querySelector('textarea').addEventListener('scroll', (e)=>{
                 if(document.getElementById('syncToggle').checked) {
@@ -595,99 +548,121 @@
                     document.querySelectorAll('textarea').forEach(ta=>{ if(ta!==e.target && ta.offsetParent) ta.scrollTop=t; });
                 }
             });
-            
             bringToFront(winId);
             return div;
         }
 
         function restoreWindow(r) {
-            // v4互換: layoutPC/Mobileがなければ作る
-            let lPC = r.layoutPC;
-            if(!lPC) lPC = { x:r.x, y:r.y, w:r.w, h:r.h, z:r.z };
-            
-            const w = addWindow(0,0,r.id, lPC, r.layoutMobile, r.fontSize);
-            
+            let lPC = r.layoutPC || { x:r.x, y:r.y, w:r.w, h:r.h, z:r.z };
+            const w = addWindow(0,0,r.id, lPC, r.layoutMobile, r.fontSize, r.title);
             if(r.text) w.querySelector('textarea').value=r.text;
             if(r.hasMedia && r.mediaBlob) {
                 blobCache[r.id]={blob:r.mediaBlob, type:r.mediaType};
                 showMedia(r.id, r.mediaBlob, r.mediaType);
             }
         }
-
         function removeWindow(id) {
-            const el=document.getElementById(id);
-            if(el){ el.remove(); deleteWindowFromDB(parseInt(id.split('-')[1])); }
+            if(confirm("このウィンドウを削除しますか？")){
+                const el=document.getElementById(id);
+                if(el){ el.remove(); deleteWindowFromDB(parseInt(id.split('-')[1])); }
+            }
         }
 
-        // --- Font Size Control ---
+        // --- Mobile Features ---
+        // 1. 並び替え
+        function moveWindow(winId, dir) {
+            const el = document.getElementById(winId);
+            const parent = el.parentNode;
+            if (dir === -1) { // Up
+                if (el.previousElementSibling) {
+                    parent.insertBefore(el, el.previousElementSibling);
+                    manualSaveAll(); // 並び順保存のため即セーブ
+                }
+            } else { // Down
+                if (el.nextElementSibling) {
+                    parent.insertBefore(el.nextElementSibling, el);
+                    manualSaveAll();
+                }
+            }
+        }
+
+        // 2. 幅切替 (100% <-> calc(50% - 5px))
+        function toggleMobileWidth(idNum) {
+            const win = document.getElementById(`win-${idNum}`);
+            const btn = document.getElementById(`btn-width-${idNum}`);
+            
+            // 現在の幅をチェック
+            const currentW = win.style.width;
+            
+            if (currentW === '100%' || !currentW) {
+                // 1/2にする (gapを考慮して少し引く)
+                win.style.width = 'calc(50% - 5px)';
+                btn.textContent = 'Full';
+            } else {
+                // 全幅に戻す
+                win.style.width = '100%';
+                btn.textContent = '1/2';
+            }
+            notifyChange(`win-${idNum}`);
+        }
+
+        // 3. スマホリサイズ (Touch Event)
+        let resizingWin = null;
+        let startTouchY = 0;
+        let startHeight = 0;
+
+        function startMobileResize(e, winId) {
+            e.preventDefault(); // スクロール防止
+            resizingWin = document.getElementById(winId);
+            const touch = e.touches[0];
+            startTouchY = touch.clientY;
+            startHeight = parseInt(window.getComputedStyle(resizingWin).height, 10);
+            
+            document.addEventListener('touchmove', onMobileResizeMove, {passive: false});
+            document.addEventListener('touchend', onMobileResizeEnd);
+        }
+        function onMobileResizeMove(e) {
+            if (!resizingWin) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const dy = touch.clientY - startTouchY;
+            const newH = startHeight + dy;
+            if (newH > 100) {
+                resizingWin.style.height = newH + 'px';
+            }
+        }
+        function onMobileResizeEnd(e) {
+            if (resizingWin) notifyChange(resizingWin.id);
+            resizingWin = null;
+            document.removeEventListener('touchmove', onMobileResizeMove);
+            document.removeEventListener('touchend', onMobileResizeEnd);
+        }
+
+        // --- Tools ---
         function changeFontSize(idNum, delta) {
             const ta = document.getElementById(`text-${idNum}`);
             const win = document.getElementById(`win-${idNum}`);
             if(!ta) return;
-            
             let current = parseInt(win.style.getPropertyValue('--font-size') || "14");
             let next = current + delta;
-            if(next < 10) next = 10;
-            if(next > 60) next = 60;
-            
+            if(next < 10) next = 10; if(next > 60) next = 60;
             const sizeStr = next + "px";
-            ta.style.fontSize = sizeStr;
-            win.style.setProperty('--font-size', sizeStr);
-            
+            ta.style.fontSize = sizeStr; win.style.setProperty('--font-size', sizeStr);
             notifyChange(`win-${idNum}`);
         }
-
         function resetFontSize(idNum) {
             const ta = document.getElementById(`text-${idNum}`);
             const win = document.getElementById(`win-${idNum}`);
             if(!ta) return;
-            
-            const defaultSize = "14px";
-            ta.style.fontSize = defaultSize;
-            win.style.setProperty('--font-size', defaultSize);
-            
+            ta.style.fontSize = "14px"; win.style.setProperty('--font-size', "14px");
             notifyChange(`win-${idNum}`);
-        }
-
-        // --- Media ---
-        function showMedia(id,blob,type) {
-            const c=document.getElementById(`media-content-${id}`);
-            c.innerHTML='';
-            const url=URL.createObjectURL(blob);
-            let el;
-            if(type.startsWith('image/')) { el=document.createElement('img'); el.src=url; }
-            else if(type.startsWith('video/')) {
-                el=document.createElement('video'); el.src=url;
-                el.controls=true; el.loop=true; el.muted=true; el.playsInline=true;
-            }
-            if(el){ el.className='media-content'; c.appendChild(el); document.getElementById(`media-${id}`).classList.add('show'); }
-        }
-        function handleDragOver(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.add('drag-over-active'); }
-        function handleDragLeave(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.remove('drag-over-active'); }
-        function handleDrop(e,winId){
-            e.preventDefault(); e.stopPropagation();
-            document.getElementById(winId).classList.remove('drag-over-active');
-            const f=e.dataTransfer.files[0];
-            if(!f)return;
-            const id=parseInt(winId.split('-')[1]);
-            blobCache[id]={blob:f, type:f.type};
-            showMedia(id,f,f.type);
-            notifyChange(winId);
-        }
-        function closeMedia(id){
-            document.getElementById(`media-${id}`).classList.remove('show');
-            const c=document.getElementById(`media-content-${id}`);
-            if(c.firstChild) URL.revokeObjectURL(c.firstChild.src);
-            c.innerHTML='';
-            delete blobCache[id];
-            notifyChange('win-'+id);
         }
 
         // --- Drag (PC) ---
         let currentDragWin=null, dx=0, dy=0;
         function startDrag(e,id) {
-            if(window.innerWidth<=768)return; // スマホではドラッグ無効
-            if(e.target.tagName==='BUTTON')return;
+            if(e.target.tagName==='INPUT' || e.target.tagName==='BUTTON') return; // 入力欄やボタンではドラッグしない
+            if(window.innerWidth<=768)return; 
             const w=document.getElementById(id);
             bringToFront(id);
             currentDragWin=w;
@@ -715,11 +690,16 @@
             notifyChange(id);
         }
 
-        // --- Utils ---
+        // --- Media / Paste / Format ---
         async function pasteToArea(id){
             try{
                 const t=await navigator.clipboard.readText();
-                document.getElementById('text-'+id).value=t; notifyChange('win-'+id);
+                const ta=document.getElementById('text-'+id);
+                // カーソル位置に挿入
+                const start = ta.selectionStart; const end = ta.selectionEnd;
+                const val = ta.value;
+                ta.value = val.substring(0, start) + t + val.substring(end);
+                notifyChange('win-'+id);
             }catch(e){alert('ペースト権限なし');}
         }
         function formatContent(id){
@@ -730,6 +710,30 @@
                .replace(/([^\n])(「)/g,(m,p1,p2)=> /[\d\.\s]/.test(p1)?m:p1+'\n'+p2)
                .replace(/(」)(\s+)(\d+\.)/g,'$1\n$3');
             ta.value=t; notifyChange('win-'+id);
+        }
+        function showMedia(id,blob,type) {
+            const c=document.getElementById(`media-content-${id}`); c.innerHTML='';
+            const url=URL.createObjectURL(blob);
+            let el;
+            if(type.startsWith('image/')) { el=document.createElement('img'); el.src=url; }
+            else if(type.startsWith('video/')) { el=document.createElement('video'); el.src=url; el.controls=true; el.loop=true; el.muted=true; el.playsInline=true; }
+            if(el){ el.className='media-content'; c.appendChild(el); document.getElementById(`media-${id}`).classList.add('show'); }
+        }
+        function handleDragOver(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.add('drag-over-active'); }
+        function handleDragLeave(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.remove('drag-over-active'); }
+        function handleDrop(e,winId){
+            e.preventDefault(); e.stopPropagation(); document.getElementById(winId).classList.remove('drag-over-active');
+            const f=e.dataTransfer.files[0]; if(!f)return;
+            const id=parseInt(winId.split('-')[1]);
+            blobCache[id]={blob:f, type:f.type};
+            showMedia(id,f,f.type);
+            notifyChange(winId);
+        }
+        function closeMedia(id){
+            document.getElementById(`media-${id}`).classList.remove('show');
+            const c=document.getElementById(`media-content-${id}`);
+            if(c.firstChild) URL.revokeObjectURL(c.firstChild.src);
+            c.innerHTML=''; delete blobCache[id]; notifyChange('win-'+id);
         }
     </script>
 </body>
