@@ -188,6 +188,26 @@
             .mobile-only { display: inline-block; }
             .pc-only { display: none; }
         }
+
+        /* --- ファイル管理リスト用の追加CSS --- */
+        .file-row {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #4a5568; padding: 10px; border-radius: 4px; margin-bottom: 6px;
+            transition: background 0.2s;
+        }
+        .file-row:hover { background-color: #2d3748; border: 1px solid #63b3ed; }
+        .file-name { 
+            font-weight: bold; color: #e2e8f0; flex-grow: 1; padding-right: 10px; 
+            cursor: pointer; display: flex; align-items: center; gap: 5px;
+        }
+        .file-actions { display: flex; gap: 8px; }
+        .btn-mini {
+            padding: 4px 10px; font-size: 0.75rem; border-radius: 3px; border: none; cursor: pointer; color: white;
+        }
+        .btn-load { background-color: #38a169; }
+        .btn-load:hover { background-color: #48bb78; }
+        .btn-trash { background-color: #e53e3e; }
+        .btn-trash:hover { background-color: #fc8181; }
     </style>
 </head>
 <body>
@@ -202,7 +222,7 @@
         <span id="status-indicator">Ready</span>
 
         <button class="btn-control btn-cloud" onclick="openUploadModal()">☁️ UP</button>
-        <button class="btn-control btn-cloud" onclick="openDownloadModal()">☁️ DOWN</button>
+        <button class="btn-control btn-cloud" onclick="openDownloadModal()">📂 管理</button>
 
         <div class="control-group">
             <label class="switch">
@@ -392,79 +412,140 @@
         }
 
         async function openDownloadModal() {
-            await manualSaveAll();
-            document.getElementById('downloadModal').classList.add('show');
-            const listEl = document.getElementById('downloadList');
-            listEl.innerHTML = '<div style="text-align:center; color:#718096;">一覧を取得中...</div>';
-            const pass = await getAuthPassword();
-            if(!pass) { listEl.innerHTML='<div style="text-align:center;">認証が必要です</div>'; return; }
-            try {
-                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=list`;
-                const res = await fetch(url, { method: 'POST' });
-                const json = await res.json();
-                if(json.status === 'success') {
-                    listEl.innerHTML = '';
-                    if(json.boards.length === 0) {
-                        listEl.innerHTML = '<div style="padding:10px; color:#718096;">ボードが見つかりません</div>';
-                    } else {
-                        json.boards.forEach(name => {
-                            const div = document.createElement('div');
-                            div.className = 'board-item' + (name === currentBoardName ? ' current' : '');
-                            div.innerHTML = `<span>📂 ${name}</span> <span style="font-size:0.8rem; color:#cbd5e0;">Load &gt;</span>`;
-                            div.onclick = () => processDownload(name);
-                            listEl.appendChild(div);
-                        });
-                    }
+        // ※ 削除機能をつけるため、事前の自動保存は必須ではありませんが、
+        // 誤操作で現在の作業が消えないよう念の為保存しておきます
+        await manualSaveAll(); 
+
+        document.getElementById('downloadModal').classList.add('show');
+        // タイトルも変更
+        document.querySelector('#downloadModal .modal-title').textContent = "クラウドファイル管理";
+        
+        await refreshBoardList();
+    }
+
+    async function refreshBoardList() {
+        const listEl = document.getElementById('downloadList');
+        listEl.innerHTML = '<div style="text-align:center; color:#718096; padding:20px;">一覧を取得中...</div>';
+        
+        const pass = await getAuthPassword();
+        if(!pass) { listEl.innerHTML='<div style="text-align:center;">認証が必要です</div>'; return; }
+
+        try {
+            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=list`;
+            const res = await fetch(url, { method: 'POST' });
+            
+            // レスポンスチェック (JSONパースエラー対策)
+            const text = await res.text();
+            let json;
+            try { json = JSON.parse(text); } 
+            catch(e) { throw new Error("サーバー応答エラー: パスワード間違い待機中、またはデータ破損"); }
+
+            if(json.status === 'success') {
+                listEl.innerHTML = '';
+                if(json.boards.length === 0) {
+                    listEl.innerHTML = '<div style="padding:20px; text-align:center; color:#cbd5e0;">保存されたボードはありません</div>';
                 } else {
-                    if(json.message.includes("合言葉")) await clearAuthPassword();
-                    throw new Error(json.message);
+                    json.boards.forEach(name => {
+                        const div = document.createElement('div');
+                        div.className = 'file-row';
+                        const isCurrent = (name === currentBoardName);
+                        
+                        // 現在のボードにはマークをつける
+                        const nameDisplay = isCurrent ? `👉 ${name}` : `📄 ${name}`;
+                        const bgStyle = isCurrent ? 'border-left: 3px solid #48bb78;' : '';
+                        div.style.cssText = bgStyle;
+
+                        div.innerHTML = `
+                            <div class="file-name" onclick="processDownload('${name}')">${nameDisplay}</div>
+                            <div class="file-actions">
+                                <button class="btn-mini btn-load" onclick="processDownload('${name}')">読込</button>
+                                <button class="btn-mini btn-trash" onclick="deleteBoard('${name}')">削除</button>
+                            </div>
+                        `;
+                        listEl.appendChild(div);
+                    });
                 }
-            } catch(e) { listEl.innerHTML = `<div style="color:#f56565;">エラー: ${e.message}</div>`; }
+            } else {
+                if(json.message && json.message.includes("合言葉")) await clearAuthPassword();
+                throw new Error(json.message || "不明なエラー");
+            }
+        } catch(e) { 
+            listEl.innerHTML = `<div style="color:#f56565; padding:10px; text-align:center;">エラー: ${e.message}</div>`; 
         }
+    }
 
-        async function processDownload(boardName) {
-            if(!confirm(`ボード「${boardName}」を読み込みますか？\n(現在の作業内容は上書きされます)`)) return;
-            closeModal('downloadModal');
-            updateStatus("受信中...", false);
-            const pass = await getAuthPassword(); 
-            try {
-                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=download&boardName=${encodeURIComponent(boardName)}`;
-                const res = await fetch(url, { method: 'POST', body: "" });
-                if(!res.ok) throw new Error("HTTP " + res.status);
-                const text = await res.text();
-                if(text.trim().startsWith("<")) throw new Error("GAS HTML Error");
-                const importData = JSON.parse(text);
-                if (importData.status === 'error') throw new Error(importData.message);
+    async function deleteBoard(boardName) {
+        if(!confirm(`本当にクラウド上の「${boardName}」を削除しますか？\n（復元できません）`)) return;
 
-                updateStatus("展開中...", false);
-                await clearAllData(true); 
+        updateStatus("削除中...", false);
+        const pass = await getAuthPassword();
+        
+        try {
+            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=delete&boardName=${encodeURIComponent(boardName)}`;
+            const res = await fetch(url, { method: 'POST' });
+            const json = await res.json();
 
-                for(let i=0; i<importData.length; i++) {
-                    let r = importData[i];
-                    let blob = null;
-                    if(r.hasMedia && r.mediaBase64) blob = await base64ToBlob(r.mediaBase64);
-                    if(blob) blobCache[r.id] = { blob: blob, type: r.mediaType };
-                    let lPC = r.layoutPC || { x: r.x||'50px', y: r.y||'50px', w: r.w||'320px', h: r.h||'400px', z: r.z||100 };
-                    let lMob = r.layoutMobile || { h: '350px', w: '100%' };
-                    let fSize = r.fontSize || '14px';
-                    let title = r.title || `Window ${r.id}`;
-                    let order = (r.order !== undefined) ? r.order : i;
-                    const record = {
-                        id: r.id, title: title, order: order,
-                        layoutPC: lPC, layoutMobile: lMob, fontSize: fSize,
-                        text: r.text, hasMedia: r.hasMedia, mediaBlob: blob, mediaType: r.mediaType
-                    };
-                    const tx = db.transaction([STORE_WINDOWS], 'readwrite');
-                    tx.objectStore(STORE_WINDOWS).put(record);
-                }
-                currentBoardName = boardName;
-                await setSetting('current_board_name', currentBoardName);
-                updateBoardDisplay();
-                loadFromDB();
-                updateStatus("DOWN完了", true);
-                alert(`読み込み完了: ${boardName}`);
-            } catch(e) { console.error(e); updateStatus("DOWN失敗", false, true); alert(e.message); }
+            if(json.status === 'success') {
+                updateStatus("削除完了", true);
+                // リストを再読込
+                await refreshBoardList();
+            } else {
+                throw new Error(json.message);
+            }
+        } catch(e) {
+            alert("削除失敗: " + e.message);
+            updateStatus("削除失敗", false, true);
         }
+    }
+
+    async function processDownload(boardName) {
+        if(!confirm(`ボード「${boardName}」を読み込みますか？\n(現在の作業内容は上書きされます)`)) return;
+        closeModal('downloadModal');
+        
+        // ... (以下、元の processDownload のロジックそのまま)
+        updateStatus("受信中...", false);
+        const pass = await getAuthPassword(); 
+        try {
+            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=download&boardName=${encodeURIComponent(boardName)}`;
+            const res = await fetch(url, { method: 'POST', body: "" });
+            
+            // JSONパース修正
+            const text = await res.text();
+            let importData;
+            try { importData = JSON.parse(text); } 
+            catch(e) { throw new Error("JSON Parse Error"); }
+
+            if (importData.status === 'error') throw new Error(importData.message);
+
+            updateStatus("展開中...", false);
+            await clearAllData(true); 
+
+            for(let i=0; i<importData.length; i++) {
+                let r = importData[i];
+                let blob = null;
+                if(r.hasMedia && r.mediaBase64) blob = await base64ToBlob(r.mediaBase64);
+                if(blob) blobCache[r.id] = { blob: blob, type: r.mediaType };
+                let lPC = r.layoutPC || { x: r.x||'50px', y: r.y||'50px', w: r.w||'320px', h: r.h||'400px', z: r.z||100 };
+                let lMob = r.layoutMobile || { h: '350px', w: '100%' };
+                let fSize = r.fontSize || '14px';
+                let title = r.title || `Window ${r.id}`;
+                let order = (r.order !== undefined) ? r.order : i;
+                const record = {
+                    id: r.id, title: title, order: order,
+                    layoutPC: lPC, layoutMobile: lMob, fontSize: fSize,
+                    text: r.text, hasMedia: r.hasMedia, mediaBlob: blob, mediaType: r.mediaType
+                };
+                const tx = db.transaction([STORE_WINDOWS], 'readwrite');
+                tx.objectStore(STORE_WINDOWS).put(record);
+            }
+            currentBoardName = boardName;
+            await setSetting('current_board_name', currentBoardName);
+            updateBoardDisplay();
+            loadFromDB();
+            updateStatus("DOWN完了", true);
+            alert(`読み込み完了: ${boardName}`);
+        } catch(e) { console.error(e); updateStatus("DOWN失敗", false, true); alert(e.message); }
+    }
 
         function blobToBase64(blob) { return new Promise((r,j)=>{const z=new FileReader();z.onloadend=()=>r(z.result);z.onerror=j;z.readAsDataURL(blob);}); }
         async function base64ToBlob(b64) { const r=await fetch(b64); return await r.blob(); }
