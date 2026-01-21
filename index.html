@@ -836,8 +836,8 @@
 
         function startDockResize(e, winId) {
             // ここでの preventDefault は削除（touch-action: none で制御するため）
-            // e.preventDefault(); 
-            // e.stopPropagation();
+            if(e.cancelable) e.preventDefault(); 
+            e.stopPropagation();
             
             dockingWin = document.getElementById(winId);
             if (!dockingWin) return;
@@ -1050,3 +1050,4 @@
     </script>
 </body>
 </html>
+
