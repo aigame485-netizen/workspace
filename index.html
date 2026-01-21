@@ -6,6 +6,11 @@
     <title>Creative Workspace v9.0</title>
     <style>
         /* --- 全体設定 --- */
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
         body {
             font-family: "Helvetica Neue", Arial, sans-serif;
             background-color: #1a202c;
@@ -122,6 +127,7 @@
         .win-tools { 
             padding: 5px; background-color: #1a202c; display: flex; align-items: center; 
             gap: 4px; flex-shrink: 0; border-bottom: 1px solid #2d3748; flex-wrap: wrap;
+            position: relative; z-index: 20;
         }
         textarea {
             flex-grow: 1; width: 100%; background-color: #222630; color: #e2e8f0;
@@ -136,6 +142,7 @@
         .mobile-resize-handle {
             height: 12px; background-color: #2d3748; cursor: row-resize; flex-shrink: 0;
             display: none; justify-content: center; align-items: center;
+            position: relative; z-index: 20;
         }
         .mobile-resize-handle::after { content: ""; width: 40px; height: 4px; background-color: #4a5568; border-radius: 2px; }
         
@@ -150,6 +157,7 @@
         .btn-close-media {
             position: absolute; top: 10px; right: 10px; background-color: rgba(0,0,0,0.6);
             color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 10px; cursor: pointer;
+            z-index: 30;
         }
 
         /* --- Minimal Mode (UI非表示) --- */
@@ -817,7 +825,26 @@
         function moveWindow(winId, dir) { const el = document.getElementById(winId); const parent = el.parentNode; if (dir === -1) { if (el.previousElementSibling) { parent.insertBefore(el, el.previousElementSibling); manualSaveAll(); } } else { if (el.nextElementSibling) { parent.insertBefore(el.nextElementSibling, el); manualSaveAll(); } } }
 
         async function pasteToArea(id){ try{ const t=await navigator.clipboard.readText(); const ta=document.getElementById('text-'+id); const start = ta.selectionStart; const end = ta.selectionEnd; const val = ta.value; ta.value = val.substring(0, start) + t + val.substring(end); notifyChange('win-'+id); }catch(e){alert('ペースト権限なし');} }
-        function formatContent(id){ const ta=document.getElementById('text-'+id); let t=ta.value; if(!t)return; t=t.replace(/\r\n/g,'\n').replace(/([^\n])(【)/g,'$1\n\n$2').replace(/\s+(\d+\.)/g,'\n$1').replace(/([^\n])(「)/g,(m,p1,p2)=> /[\d\.\s]/.test(p1)?m:p1+'\n'+p2).replace(/(」)(\s+)(\d+\.)/g,'$1\n$3'); ta.value=t; notifyChange('win-'+id); }
+        function formatContent(id){ 
+            const ta=document.getElementById('text-'+id); 
+            let t=ta.value; 
+            if(!t)return; 
+            
+            // 1. 改行コードの正規化
+            t = t.replace(/\r\n/g,'\n');
+
+            // 2. 【今回追加】空白行を削除（2つ以上連続する改行を1つにする）
+            t = t.replace(/\n{2,}/g, '\n');
+
+            // 3. 既存のルール（シーン区切りの【 】の前だけはあえて空行を入れる仕様は維持）
+            t = t.replace(/([^\n])(【)/g,'$1\n\n$2') 
+                 .replace(/\s+(\d+\.)/g,'\n$1')
+                 .replace(/([^\n])(「)/g,(m,p1,p2)=> /[\d\.\s]/.test(p1)?m:p1+'\n'+p2)
+                 .replace(/(」)(\s+)(\d+\.)/g,'$1\n$3'); 
+            
+            ta.value=t; 
+            notifyChange('win-'+id); 
+        }
         
         function showMedia(id,blob,type) { 
             const c=document.getElementById(`media-content-${id}`); c.innerHTML=''; 
