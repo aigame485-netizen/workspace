@@ -117,14 +117,9 @@
             resize: none !important; margin: 0 !important;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.3); /* 上向きの影を追加 */
         }
-        /* ドッキング時専用のリサイズハンドル（ウィンドウの上部に表示） */
+        /* --- ドッキング用ハンドル（不要になったので非表示） --- */
         .dock-resize-handle {
-            display: none; /* 通常は非表示 */
-            height: 20px; background-color: #2d3748; cursor: row-resize; flex-shrink: 0;
-            justify-content: center; align-items: center; border-top: 2px solid #63b3ed;
-            touch-action: none; /* スマホでのスクロール干渉防止 */
-            position: relative; /* z-indexを効かせるため */
-            z-index: 20001; /* ウィンドウ本体よりさらに上にする */
+            display: none !important;
         }
         .window.docked-bottom .dock-resize-handle {
             display: flex; /* ドッキング時のみ表示 */
@@ -132,9 +127,12 @@
         .dock-resize-handle::after { content: ""; width: 50px; height: 4px; background-color: #718096; border-radius: 2px; }
 
         .win-header {
-            padding: 6px 8px; background-color: #2d3748; border-bottom: 1px solid #4a5568;
+            padding: 2px 8px; /* 上下の余白を削減 (6px -> 2px) */
+            background-color: #2d3748; border-bottom: 1px solid #4a5568;
             display: flex; align-items: center;
-            cursor: move; user-select: none; flex-shrink: 0; gap: 5px; height: 36px; box-sizing: border-box;
+            cursor: move; user-select: none; flex-shrink: 0; gap: 5px; 
+            height: 28px; /* 高さを削減 (36px -> 28px) */
+            box-sizing: border-box;
         }
         
         .win-title-input {
@@ -749,11 +747,8 @@
             const widthBtnLabel = (div.style.width === '100%' || !div.style.width) ? '1/2' : 'Full';
             const dockBtnClass = isDocked ? 'btn-active' : '';
 
+            // ★修正: 上部の dock-resize-handle のHTML行を削除しました
             div.innerHTML=`
-                <!-- ▼ 新規追加: ドッキング時専用リサイズハンドル ▼ -->
-                <div class="dock-resize-handle mobile-only" ontouchstart="startDockResize(event, '${winId}')"></div>
-                <!-- ▲ ここまで ▲ -->
-
                 <div class="win-header" onmousedown="startDrag(event,'${winId}')">
                     <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', -1)">↑</button>
                     <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', 1)">↓</button>
@@ -836,8 +831,8 @@
 
         function startDockResize(e, winId) {
             // ここでの preventDefault は削除（touch-action: none で制御するため）
-            if(e.cancelable) e.preventDefault(); 
-            e.stopPropagation();
+            // e.preventDefault(); 
+            // e.stopPropagation();
             
             dockingWin = document.getElementById(winId);
             if (!dockingWin) return;
@@ -1050,4 +1045,3 @@
     </script>
 </body>
 </html>
-
