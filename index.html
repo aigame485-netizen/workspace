@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Creative Workspace v4.1</title>
+    <title>Creative Workspace v5.0</title>
     <style>
         /* --- 全体設定 --- */
         body {
@@ -63,20 +63,22 @@
         /* --- キャンバス --- */
         #canvas {
             position: relative; flex-grow: 1; width: 100%; height: 100%;
-            overflow: auto; 
+            overflow: auto; /* PCでもスクロール可能に */
         }
 
-        /* --- ウィンドウ --- */
+        /* --- ウィンドウ (PCデフォルト) --- */
         .window {
             position: absolute; background-color: #222630;
             border: 1px solid #4a5568; border-radius: 6px;
             display: flex; flex-direction: column;
             width: 320px; height: 400px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            resize: both; overflow: hidden; 
+            resize: both; overflow: hidden; /* PCは縦横リサイズ */
             transition: border-color 0.2s, box-shadow 0.2s;
+            min-width: 200px; min-height: 150px;
         }
         .window.active { border-color: #63b3ed; box-shadow: 0 15px 35px rgba(0,0,0,0.7); }
+        
         .win-header {
             padding: 8px 12px; background-color: #2d3748; border-bottom: 1px solid #4a5568;
             display: flex; justify-content: space-between; align-items: center;
@@ -84,19 +86,29 @@
         }
         .win-title { font-size: 0.85rem; font-weight: bold; color: #e2e8f0; }
         .btn-delete { background: none; border: none; color: #718096; cursor: pointer; font-size: 1.2rem; line-height: 1; }
+        
         .win-body { flex-grow: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
-        .win-tools { padding: 5px 10px; background-color: #1a202c; display: flex; flex-shrink: 0; }
+        
+        .win-tools { 
+            padding: 5px 10px; background-color: #1a202c; display: flex; align-items: center; 
+            gap: 5px; flex-shrink: 0; border-bottom: 1px solid #2d3748;
+        }
         
         textarea {
             flex-grow: 1; width: 100%; background-color: #222630; color: #e2e8f0;
-            border: none; padding: 10px; resize: none; font-size: 14px; line-height: 1.7; outline: none;
-            box-sizing: border-box; border-top: 1px solid #2d3748;
+            border: none; padding: 10px; resize: none; line-height: 1.7; outline: none;
+            box-sizing: border-box; 
         }
-        .btn-format, .btn-paste { cursor: pointer; border: none; color: #e2e8f0; }
-        .btn-paste { background-color: #4a5568; border-radius: 3px; padding: 3px 8px; font-size: 0.75rem; }
-        .btn-format { width: 100%; background-color: #553c9a; color: #e9d8fd; border-top: 1px solid #4a5568; padding: 10px; font-weight: bold; flex-shrink: 0; }
+        
+        /* ツールボタン */
+        .btn-tool { cursor: pointer; border: none; color: #e2e8f0; background-color: #4a5568; border-radius: 3px; padding: 3px 8px; font-size: 0.75rem; }
+        .btn-tool:hover { background-color: #718096; }
+        .btn-font { font-family: monospace; font-weight: bold; width: 30px; }
 
-        /* メディア */
+        .btn-format { width: 100%; background-color: #553c9a; color: #e9d8fd; border: none; border-top: 1px solid #4a5568; padding: 10px; font-weight: bold; flex-shrink: 0; cursor: pointer;}
+        .btn-format:hover { background-color: #6b46c1; }
+
+        /* メディアレイヤー */
         .media-layer {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #000;
             display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 10;
@@ -120,8 +132,11 @@
                 overflow-y: auto; 
             }
             .window {
+                /* スマホは相対配置で縦並び */
                 position: relative !important; left: auto !important; top: auto !important;
-                width: 100% !important; height: 350px !important;
+                width: 100% !important; 
+                /* 高さはJSで制御するが、CSSでのリサイズを許可（縦のみ） */
+                resize: vertical !important; 
                 margin-bottom: 0; z-index: 1 !important; flex-shrink: 0;
             }
             .win-header { cursor: default; }
@@ -131,7 +146,7 @@
 <body>
 
     <header>
-        <h1>Canvas v4.1</h1>
+        <h1>Canvas v5.0</h1>
         <span id="status-indicator">Ready</span>
 
         <button class="btn-control btn-cloud" onclick="uploadToCloud()">☁️ UP</button>
@@ -163,14 +178,15 @@
 
     <script>
         // ==========================================
-        //  【重要】ここにGASの新しいウェブアプリURLを貼る
+        //  GAS URL (POST対応版)
         // ==========================================
         const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fEklillB729ge_b9-q9afAZPartKazdS9-6u8xkfDercVRaLl2/exec"; 
         // ==========================================
 
-        const DB_NAME = 'CreativeWorkspaceDB_v4';
-        const DB_VERSION = 1;
-        const STORE_NAME = 'windows';
+        const DB_NAME = 'CreativeWorkspaceDB_v5';
+        const DB_VERSION = 2; // バージョンアップ（settingsストア追加のため）
+        const STORE_WINDOWS = 'windows';
+        const STORE_SETTINGS = 'settings';
 
         let db = null;
         let zIndexCounter = 100;
@@ -180,12 +196,36 @@
         let blobCache = {};
 
         window.onload = async function() {
-            if(GAS_API_URL.includes("ここに")) alert("HTMLコード内の GAS_API_URL を設定してください！");
             await initDB();
             loadFromDB();
         };
 
-        // --- クラウド同期 (text/plain方式) ---
+        // --- Auth (IndexedDBに保存) ---
+        async function getAuthPassword() {
+            // 1. DBから取得試行
+            try {
+                const tx = db.transaction([STORE_SETTINGS], 'readonly');
+                const req = tx.objectStore(STORE_SETTINGS).get('auth_password');
+                const res = await new Promise(r => req.onsuccess = () => r(req.result));
+                if (res && res.value) return res.value;
+            } catch(e) { console.error(e); }
+
+            // 2. なければ入力
+            const pass = prompt("セキュリティ保護のため、合言葉を入力してください");
+            if (pass) {
+                // 保存
+                const tx = db.transaction([STORE_SETTINGS], 'readwrite');
+                tx.objectStore(STORE_SETTINGS).put({ key: 'auth_password', value: pass });
+            }
+            return pass;
+        }
+
+        async function clearAuthPassword() {
+            const tx = db.transaction([STORE_SETTINGS], 'readwrite');
+            tx.objectStore(STORE_SETTINGS).delete('auth_password');
+        }
+
+        // --- Cloud Logic (Sync前の保存、Auth保存、POST通信) ---
         function blobToBase64(blob) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -199,28 +239,19 @@
             return await res.blob();
         }
 
-        // 毎回入力するのは面倒なので、ブラウザに合言葉を覚えさせる変数
-        let cachedPassword = "";
-
-        function getPassword() {
-            // すでにメモリにあればそれを使う、なければ聞く
-            if (cachedPassword) return cachedPassword;
-            const pass = prompt("セキュリティ保護のため、合言葉を入力してください");
-            if (pass) cachedPassword = pass;
-            return pass;
-        }
-
         async function uploadToCloud() {
-            const pass = getPassword();
+            // 1. まずローカル保存
+            await manualSaveAll();
+
+            const pass = await getAuthPassword();
             if (!pass) return alert("合言葉が必要です中止します");
 
             if(!confirm("クラウド(Google Drive)に保存しますか？\n(既存データは上書きされます)")) return;
             updateStatus("変換中...", false);
             
             try {
-                // (DB取得部分は同じなので省略せず記述します)
-                const tx = db.transaction([STORE_NAME], 'readonly');
-                const req = tx.objectStore(STORE_NAME).getAll();
+                const tx = db.transaction([STORE_WINDOWS], 'readonly');
+                const req = tx.objectStore(STORE_WINDOWS).getAll();
                 const records = await new Promise(r => req.onsuccess = () => r(req.result));
 
                 const exportData = [];
@@ -229,8 +260,12 @@
                     if(r.hasMedia && r.mediaBlob) {
                         b64 = await blobToBase64(r.mediaBlob);
                     }
+                    // そのまま全プロパティ（layoutPC, layoutMobile含む）を出す
                     exportData.push({
-                        id: r.id, x: r.x, y: r.y, w: r.w, h: r.h, z: r.z,
+                        id: r.id, 
+                        layoutPC: r.layoutPC,
+                        layoutMobile: r.layoutMobile,
+                        fontSize: r.fontSize,
                         text: r.text,
                         hasMedia: r.hasMedia,
                         mediaType: r.mediaType,
@@ -240,7 +275,7 @@
 
                 updateStatus("送信中...", false);
 
-                // ★ URLに合言葉(?auth=...)を付けて送信する
+                // URLにパラメータ、Bodyにデータ
                 const urlWithAuth = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}`;
 
                 const response = await fetch(urlWithAuth, {
@@ -256,8 +291,10 @@
                     updateStatus("UP完了", true);
                     alert("クラウド保存完了！");
                 } else {
-                    // 合言葉間違いなどのエラー
-                    cachedPassword = ""; // パスワード間違ってるかもしれないのでクリア
+                    // 合言葉ミスなど
+                    if(resJson.message.includes("合言葉")) {
+                        await clearAuthPassword();
+                    }
                     throw new Error(resJson.message);
                 }
 
@@ -268,35 +305,36 @@
             }
         }
 
-async function downloadFromCloud() {
-            const pass = getPassword();
+        async function downloadFromCloud() {
+            // 1. まずローカル保存 (念のため)
+            await manualSaveAll();
+
+            const pass = await getAuthPassword();
             if (!pass) return alert("合言葉が必要です中止します");
 
             if(!confirm("クラウドから読み込みますか？\n(現在の作業内容は消えます)")) return;
             updateStatus("受信中...", false);
 
             try {
-                // ★ 変更点: action=download を追加
+                // POSTで action=download を送る
                 const urlWithAuth = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=download`;
                 
-                // ★ 変更点: GET ではなく POST メソッドを使う
-                // body は空でよいが、POSTメソッドにすることでリダイレクト問題を回避する
                 const response = await fetch(urlWithAuth, {
                     method: 'POST',
-                    body: "" // 空のボディを送る
+                    body: "" 
                 });
 
                 if(!response.ok) throw new Error("HTTP Status: " + response.status);
                 
-                // HTMLエラーが返ってきていないかチェック（念のため）
                 const text = await response.text();
                 if(text.trim().startsWith("<")) throw new Error("GASからHTMLエラーが返されました。");
 
                 const importData = JSON.parse(text);
 
-                // エラー応答の場合
                 if (importData.status === 'error') {
-                    cachedPassword = "";
+                    if(importData.message.includes("合言葉")) {
+                        await clearAuthPassword();
+                    }
                     throw new Error(importData.message);
                 }
 
@@ -312,15 +350,26 @@ async function downloadFromCloud() {
                     }
                     if(blob) blobCache[r.id] = { blob: blob, type: r.mediaType };
 
+                    // 旧データ(v4以前)との互換性チェック
+                    let lPC = r.layoutPC;
+                    if (!lPC && r.w) { // v4データの場合、直下のx,y,w,hをPCレイアウトにする
+                        lPC = { x: r.x, y: r.y, w: r.w, h: r.h, z: r.z };
+                    }
+                    let lMob = r.layoutMobile || { h: '350px' };
+                    let fSize = r.fontSize || '14px';
+
                     const record = {
-                        id: r.id, x: r.x, y: r.y, w: r.w, h: r.h, z: r.z,
+                        id: r.id, 
+                        layoutPC: lPC,
+                        layoutMobile: lMob,
+                        fontSize: fSize,
                         text: r.text,
                         hasMedia: r.hasMedia,
                         mediaBlob: blob,
                         mediaType: r.mediaType
                     };
-                    const tx = db.transaction([STORE_NAME], 'readwrite');
-                    tx.objectStore(STORE_NAME).put(record);
+                    const tx = db.transaction([STORE_WINDOWS], 'readwrite');
+                    tx.objectStore(STORE_WINDOWS).put(record);
                 }
                 loadFromDB();
                 updateStatus("DOWN完了", true);
@@ -332,18 +381,21 @@ async function downloadFromCloud() {
                 alert("エラー: " + e.message);
             }
         }
+
         // --- IndexedDB ---
         function initDB() {
             return new Promise((resolve, reject) => {
                 const r = indexedDB.open(DB_NAME, DB_VERSION);
                 r.onupgradeneeded = (e) => {
                     const d = e.target.result;
-                    if (!d.objectStoreNames.contains(STORE_NAME)) d.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                    if (!d.objectStoreNames.contains(STORE_WINDOWS)) d.createObjectStore(STORE_WINDOWS, { keyPath: 'id' });
+                    if (!d.objectStoreNames.contains(STORE_SETTINGS)) d.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
                 };
                 r.onsuccess = (e) => { db = e.target.result; resolve(db); };
                 r.onerror = (e) => reject(e);
             });
         }
+
         async function saveWindowToDB(winId) {
             if (!db) return;
             const el = document.getElementById(winId);
@@ -351,27 +403,14 @@ async function downloadFromCloud() {
             const idNum = parseInt(winId.split('-')[1]);
             const isMobile = window.innerWidth <= 768;
 
-            const tx = db.transaction([STORE_NAME], 'readonly');
+            const tx = db.transaction([STORE_WINDOWS], 'readonly');
             const old = await new Promise(r => {
-                const req = tx.objectStore(STORE_NAME).get(idNum);
+                const req = tx.objectStore(STORE_WINDOWS).get(idNum);
                 req.onsuccess = () => r(req.result);
             });
 
+            // 現在のデータを取得
             const rect = el.getBoundingClientRect();
-            let x = el.style.left;
-            let y = el.style.top;
-            let w = el.style.width;
-            let h = el.style.height;
-
-            if (isMobile && old) {
-                x = old.x; y = old.y; w = old.w; h = old.h;
-            } else {
-                if(!x || x==='auto') x = rect.left + 'px';
-                if(!y || y==='auto') y = rect.top + 'px';
-                if(!w || w==='auto') w = rect.width + 'px';
-                if(!h || h==='auto') h = rect.height + 'px';
-            }
-
             const ta = el.querySelector('textarea');
             const mediaLayer = document.getElementById(`media-${idNum}`);
             const isMediaShow = mediaLayer.classList.contains('show');
@@ -381,30 +420,54 @@ async function downloadFromCloud() {
                 type = blobCache[idNum].type;
             }
 
+            // 新しいデータ構造を作成
+            // 既存データがあればそれをベースにする
+            let layoutPC = old && old.layoutPC ? old.layoutPC : { x:'50px', y:'50px', w:'320px', h:'400px', z:100 };
+            let layoutMobile = old && old.layoutMobile ? old.layoutMobile : { h:'350px' };
+            let fontSize = el.style.getPropertyValue('--font-size') || (old ? old.fontSize : '14px');
+
+            // 画面モードに合わせてレイアウト情報を更新
+            if (isMobile) {
+                // スマホ時：高さのみ更新 (幅は100%固定、X/Y無効)
+                // スマホのリサイズは style.height に反映される
+                layoutMobile.h = el.style.height; 
+            } else {
+                // PC時：x, y, w, h, z を更新
+                layoutPC.x = el.style.left;
+                layoutPC.y = el.style.top;
+                layoutPC.w = el.style.width;
+                layoutPC.h = el.style.height;
+                layoutPC.z = parseInt(el.style.zIndex || 100);
+            }
+
             const data = {
-                id: idNum, x: x, y: y, w: w, h: h,
-                z: parseInt(el.style.zIndex || 100),
+                id: idNum,
+                layoutPC: layoutPC,
+                layoutMobile: layoutMobile,
+                fontSize: fontSize,
                 text: ta.value,
                 hasMedia: isMediaShow, mediaBlob: blob, mediaType: type
             };
 
             return new Promise(res => {
-                const tx2 = db.transaction([STORE_NAME], 'readwrite');
-                tx2.objectStore(STORE_NAME).put(data);
+                const tx2 = db.transaction([STORE_WINDOWS], 'readwrite');
+                tx2.objectStore(STORE_WINDOWS).put(data);
                 tx2.oncomplete = () => { updateStatus('保存済', true); res(); };
             });
         }
+
         async function deleteWindowFromDB(idNum) {
             if(!db) return;
-            const tx = db.transaction([STORE_NAME], 'readwrite');
-            tx.objectStore(STORE_NAME).delete(idNum);
+            const tx = db.transaction([STORE_WINDOWS], 'readwrite');
+            tx.objectStore(STORE_WINDOWS).delete(idNum);
             delete blobCache[idNum];
         }
+
         async function loadFromDB() {
             if(!db) return;
             document.getElementById('canvas').innerHTML = '';
-            const tx = db.transaction([STORE_NAME], 'readonly');
-            const req = tx.objectStore(STORE_NAME).getAll();
+            const tx = db.transaction([STORE_WINDOWS], 'readonly');
+            const req = tx.objectStore(STORE_WINDOWS).getAll();
             req.onsuccess = (e) => {
                 const r = e.target.result;
                 r.sort((a,b)=>a.id-b.id);
@@ -413,16 +476,17 @@ async function downloadFromCloud() {
                 updateStatus('Ready', true);
             };
         }
+
         async function clearAllData(skip=false) {
             if(!skip && !confirm("全削除しますか？")) return;
             document.getElementById('canvas').innerHTML='';
             blobCache={};
-            const tx = db.transaction([STORE_NAME], 'readwrite');
-            tx.objectStore(STORE_NAME).clear();
+            const tx = db.transaction([STORE_WINDOWS], 'readwrite');
+            tx.objectStore(STORE_WINDOWS).clear();
             if(!skip) updateStatus('削除完了', true);
         }
 
-        // --- UI ---
+        // --- UI Utils ---
         function toggleAutoSave() {
             isAutoSaveEnabled = document.getElementById('autoSaveToggle').checked;
             document.getElementById('btn-manual-save').disabled = isAutoSaveEnabled;
@@ -455,7 +519,7 @@ async function downloadFromCloud() {
             if(e) el.classList.add('error');
         }
 
-        // --- Window ---
+        // --- Window Operations ---
         function createNewWindow() {
             let max=0;
             document.querySelectorAll('.window').forEach(w=>{
@@ -464,17 +528,37 @@ async function downloadFromCloud() {
             });
             addWindow(50,50,max+1);
         }
-        function addWindow(x,y,idNum,w='320px',h='400px',z=null) {
+
+        function addWindow(x,y,idNum, layoutPC=null, layoutMobile=null, fontSize='14px') {
             const winId='win-'+idNum;
-            if(z===null){ zIndexCounter++; z=zIndexCounter; }
-            else if(z>zIndexCounter) zIndexCounter=z;
+            const isMobile = window.innerWidth <= 768;
+
+            // レイアウト決定
+            let styleStr = "";
+            let w = '320px', h = '400px', z = null;
+
+            if (isMobile) {
+                // スマホ: DBのlayoutMobile.h または デフォルト
+                h = (layoutMobile && layoutMobile.h) ? layoutMobile.h : '350px';
+                // スマホはCSSで強制配置されるので、inline styleには高さだけ設定する
+                styleStr = `height:${h}; --font-size:${fontSize};`;
+            } else {
+                // PC: DBのlayoutPC または 引数x,y
+                if (layoutPC) {
+                    x = layoutPC.x; y = layoutPC.y; w = layoutPC.w; h = layoutPC.h; z = layoutPC.z;
+                } else {
+                    w = '320px'; h = '400px'; 
+                }
+                if(z===null || z===undefined){ zIndexCounter++; z=zIndexCounter; }
+                else if(z>zIndexCounter) zIndexCounter=z;
+
+                styleStr = `left:${x}; top:${y}; width:${w}; height:${h}; z-index:${z}; --font-size:${fontSize};`;
+            }
 
             const cvs=document.getElementById('canvas');
             const div=document.createElement('div');
             div.className='window'; div.id=winId;
-            div.style.left=x+(typeof x==='number'? 'px':'');
-            div.style.top=y+(typeof y==='number'? 'px':'');
-            div.style.width=w; div.style.height=h; div.style.zIndex=z;
+            div.style.cssText = styleStr;
 
             div.innerHTML=`
                 <div class="win-header" onmousedown="startDrag(event,'${winId}')">
@@ -484,8 +568,17 @@ async function downloadFromCloud() {
                 <div class="win-body" onmousedown="bringToFront('${winId}')"
                      ondragover="handleDragOver(event,this)" ondragleave="handleDragLeave(event,this)"
                      ondrop="handleDrop(event,'${winId}')">
-                    <div class="win-tools"><button class="btn-paste" onclick="pasteToArea(${idNum})">📋</button></div>
-                    <textarea id="text-${idNum}" oninput="notifyChange('${winId}')"></textarea>
+                    
+                    <div class="win-tools">
+                        <button class="btn-tool" onclick="pasteToArea(${idNum})">📋 Paste</button>
+                        <div style="flex-grow:1;"></div>
+                        <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, -2)">A-</button>
+                        <button class="btn-tool" onclick="resetFontSize(${idNum})" title="デフォルト(14px)に戻す">Def</button>
+                        <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, 2)">A+</button>
+                    </div>
+
+                    <textarea id="text-${idNum}" style="font-size:${fontSize};" oninput="notifyChange('${winId}')"></textarea>
+                    
                     <button class="btn-format" onclick="formatContent(${idNum})">整形</button>
                     <div id="media-${idNum}" class="media-layer">
                         <button class="btn-close-media" onclick="closeMedia(${idNum})">×</button>
@@ -494,6 +587,7 @@ async function downloadFromCloud() {
                 </div>`;
             cvs.appendChild(div);
 
+            // イベントリスナー
             div.addEventListener('mouseup', ()=> { if(currentDragWin!==div) notifyChange(winId); });
             div.querySelector('textarea').addEventListener('scroll', (e)=>{
                 if(document.getElementById('syncToggle').checked) {
@@ -501,20 +595,58 @@ async function downloadFromCloud() {
                     document.querySelectorAll('textarea').forEach(ta=>{ if(ta!==e.target && ta.offsetParent) ta.scrollTop=t; });
                 }
             });
+            
             bringToFront(winId);
             return div;
         }
+
         function restoreWindow(r) {
-            const w = addWindow(r.x,r.y,r.id,r.w,r.h,r.z);
+            // v4互換: layoutPC/Mobileがなければ作る
+            let lPC = r.layoutPC;
+            if(!lPC) lPC = { x:r.x, y:r.y, w:r.w, h:r.h, z:r.z };
+            
+            const w = addWindow(0,0,r.id, lPC, r.layoutMobile, r.fontSize);
+            
             if(r.text) w.querySelector('textarea').value=r.text;
             if(r.hasMedia && r.mediaBlob) {
                 blobCache[r.id]={blob:r.mediaBlob, type:r.mediaType};
                 showMedia(r.id, r.mediaBlob, r.mediaType);
             }
         }
+
         function removeWindow(id) {
             const el=document.getElementById(id);
             if(el){ el.remove(); deleteWindowFromDB(parseInt(id.split('-')[1])); }
+        }
+
+        // --- Font Size Control ---
+        function changeFontSize(idNum, delta) {
+            const ta = document.getElementById(`text-${idNum}`);
+            const win = document.getElementById(`win-${idNum}`);
+            if(!ta) return;
+            
+            let current = parseInt(win.style.getPropertyValue('--font-size') || "14");
+            let next = current + delta;
+            if(next < 10) next = 10;
+            if(next > 60) next = 60;
+            
+            const sizeStr = next + "px";
+            ta.style.fontSize = sizeStr;
+            win.style.setProperty('--font-size', sizeStr);
+            
+            notifyChange(`win-${idNum}`);
+        }
+
+        function resetFontSize(idNum) {
+            const ta = document.getElementById(`text-${idNum}`);
+            const win = document.getElementById(`win-${idNum}`);
+            if(!ta) return;
+            
+            const defaultSize = "14px";
+            ta.style.fontSize = defaultSize;
+            win.style.setProperty('--font-size', defaultSize);
+            
+            notifyChange(`win-${idNum}`);
         }
 
         // --- Media ---
@@ -554,7 +686,7 @@ async function downloadFromCloud() {
         // --- Drag (PC) ---
         let currentDragWin=null, dx=0, dy=0;
         function startDrag(e,id) {
-            if(window.innerWidth<=768)return;
+            if(window.innerWidth<=768)return; // スマホではドラッグ無効
             if(e.target.tagName==='BUTTON')return;
             const w=document.getElementById(id);
             bringToFront(id);
