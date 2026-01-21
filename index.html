@@ -123,6 +123,8 @@
             height: 20px; background-color: #2d3748; cursor: row-resize; flex-shrink: 0;
             justify-content: center; align-items: center; border-top: 2px solid #63b3ed;
             touch-action: none; /* スマホでのスクロール干渉防止 */
+            position: relative; /* z-indexを効かせるため */
+            z-index: 20001; /* ウィンドウ本体よりさらに上にする */
         }
         .window.docked-bottom .dock-resize-handle {
             display: flex; /* ドッキング時のみ表示 */
@@ -827,33 +829,47 @@
         }
         
         // --- Mobile Logic ---
-        // --- Dock Resize Logic (新規追加) ---
+    // --- Dock Resize Logic (新規追加・修正版) --- 
         let dockingWin = null;
         let dockStartY = 0;
         let dockStartH = 0;
 
         function startDockResize(e, winId) {
-            e.preventDefault();
-            e.stopPropagation(); // 親要素への伝播を止める
+            // ここでの preventDefault は削除（touch-action: none で制御するため）
+            // e.preventDefault(); 
+            // e.stopPropagation();
+            
             dockingWin = document.getElementById(winId);
+            if (!dockingWin) return;
+
             const touch = e.touches[0];
             dockStartY = touch.clientY;
-            // 現在の高さを取得
-            dockStartH = parseInt(window.getComputedStyle(dockingWin).height, 10);
             
+            // 現在の高さを取得（padding等が含まれる場合を考慮して computedStyle を使用）
+            const style = window.getComputedStyle(dockingWin);
+            dockStartH = parseInt(style.height, 10);
+            
+            if (isNaN(dockStartH)) dockStartH = 350; // 万が一取得できなかった場合のフォールバック
+
+            // touchmove は preventDefault が必要なため passive: false を明示
             document.addEventListener('touchmove', onDockResizeMove, {passive: false});
             document.addEventListener('touchend', onDockResizeEnd);
         }
 
         function onDockResizeMove(e) {
             if (!dockingWin) return;
-            e.preventDefault();
+            
+            // ここではスクロールを確実に止めるために preventDefault する
+            if (e.cancelable) e.preventDefault();
+
             const touch = e.touches[0];
-            const diff = dockStartY - touch.clientY; // 上に動かすと(Yが減ると)高さが増える
+            // 上に引っ張る（Yが減る）と高さが増える計算
+            const diff = dockStartY - touch.clientY; 
             let newH = dockStartH + diff;
 
             // 最小・最大高さの制限
             if (newH < 150) newH = 150;
+            // アドレスバー等の影響を考慮して少し余裕を持たせる
             if (newH > window.innerHeight - 50) newH = window.innerHeight - 50;
 
             dockingWin.style.height = newH + 'px';
@@ -861,7 +877,6 @@
             // キャンバスの余白もリアルタイムで連動させる
             updateCanvasPadding(newH);
         }
-
         function onDockResizeEnd(e) {
             if (dockingWin) {
                 notifyChange(dockingWin.id); // 保存トリガー
