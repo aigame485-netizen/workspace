@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Creative Workspace v8.2</title>
+    <title>Creative Workspace v9.0</title>
     <style>
         /* --- 全体設定 --- */
         body {
@@ -29,7 +29,7 @@
         .board-indicator {
             background-color: #2d3748; padding: 4px 10px; border-radius: 4px; border: 1px solid #4a5568;
             font-size: 0.85rem; color: #e2e8f0; cursor: default; display: flex; align-items: center; gap: 5px;
-            margin-right: auto; /* 右側の余白を最大に取る */
+            margin-right: auto;
         }
         .board-name { font-weight: bold; color: #63b3ed; }
 
@@ -49,6 +49,7 @@
         .btn-danger { background-color: #9b2c2c; }
         .btn-cloud { background-color: #d69e2e; color: #1a202c; font-weight: bold; }
         .btn-cloud:hover { background-color: #ecc94b; }
+        .btn-ui-toggle { background-color: #718096; font-size: 1.1rem; padding: 2px 10px; }
 
         .switch-label { font-size: 0.75rem; color: #cbd5e0; cursor: pointer; user-select: none; margin-left: 5px;}
         .switch { position: relative; display: inline-block; width: 30px; height: 16px; vertical-align: middle; }
@@ -71,6 +72,7 @@
         /* --- キャンバス --- */
         #canvas {
             position: relative; flex-grow: 1; width: 100%; height: 100%; overflow: auto; 
+            transition: padding-bottom 0.3s; /* ドッキング時の余白調整用 */
         }
 
         /* --- ウィンドウ --- */
@@ -86,10 +88,18 @@
         }
         .window.active { border-color: #63b3ed; box-shadow: 0 15px 35px rgba(0,0,0,0.7); }
         
+        /* ドッキング（固定）状態のスタイル */
+        .window.docked-bottom {
+            position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; top: auto !important;
+            width: 100% !important; height: 250px !important; z-index: 20000 !important;
+            border-radius: 0 !important; border-top: 2px solid #63b3ed; border-left: none; border-right: none; border-bottom: none;
+            resize: none !important; margin: 0 !important;
+        }
+
         .win-header {
             padding: 6px 8px; background-color: #2d3748; border-bottom: 1px solid #4a5568;
             display: flex; align-items: center;
-            cursor: move; user-select: none; flex-shrink: 0; gap: 5px;
+            cursor: move; user-select: none; flex-shrink: 0; gap: 5px; height: 36px; box-sizing: border-box;
         }
         
         .win-title-input {
@@ -108,6 +118,7 @@
         .btn-delete { color: #fc8181; font-size: 1.2rem; line-height: 1; border:none; background:none; cursor:pointer;}
         
         .win-body { flex-grow: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        
         .win-tools { 
             padding: 5px; background-color: #1a202c; display: flex; align-items: center; 
             gap: 4px; flex-shrink: 0; border-bottom: 1px solid #2d3748; flex-wrap: wrap;
@@ -120,21 +131,35 @@
         .btn-tool:hover { background-color: #718096; }
         .btn-font { font-family: monospace; font-weight: bold; width: 24px; padding: 4px 0; text-align: center; }
         .btn-format { background-color: #553c9a; color: #e9d8fd; }
+        .btn-active { background-color: #3182ce; color: white; } /* アクティブ状態用 */
+
         .mobile-resize-handle {
             height: 12px; background-color: #2d3748; cursor: row-resize; flex-shrink: 0;
             display: none; justify-content: center; align-items: center;
         }
         .mobile-resize-handle::after { content: ""; width: 40px; height: 4px; background-color: #4a5568; border-radius: 2px; }
+        
         .media-layer {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #000;
             display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 10;
         }
         .media-layer.show { display: flex; }
+        .media-layer.hidden-media { display: none !important; } /* 強制非表示用 */
+        
         .media-content { max-width: 100%; max-height: 100%; object-fit: contain; }
         .btn-close-media {
             position: absolute; top: 10px; right: 10px; background-color: rgba(0,0,0,0.6);
             color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 10px; cursor: pointer;
         }
+
+        /* --- Minimal Mode (UI非表示) --- */
+        body.minimal-mode .win-tools { display: none !important; }
+        body.minimal-mode .win-title-input { display: none !important; }
+        body.minimal-mode .btn-header-icon { display: none !important; }
+        /* タイトルバー自体はドラッグ用に残すが目立たなくする */
+        body.minimal-mode .win-header { height: 10px; padding: 0; opacity: 0.2; transition: opacity 0.2s; }
+        body.minimal-mode .win-header:hover { opacity: 1; }
+        body.minimal-mode .win-header button.btn-delete { display: none; } /* 誤操作防止のため削除ボタンも消す */
 
         /* --- モーダル (共通) --- */
         .modal-overlay {
@@ -155,35 +180,7 @@
             max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
             background: #1a202c; padding: 10px; border-radius: 4px; min-height: 50px;
         }
-        .board-item {
-            background: #4a5568; border: none; color: white; padding: 10px; text-align: left;
-            cursor: pointer; border-radius: 3px; font-size: 0.95rem; display: flex; justify-content: space-between;
-        }
-        .board-item:hover { background-color: #63b3ed; }
-        .board-item.current { border-left: 4px solid #48bb78; font-weight: bold; background-color: #2f855a; }
         
-        .input-group { display: flex; gap: 5px; }
-        .input-text {
-            background: #1a202c; border: 1px solid #4a5568; color: white;
-            padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box;
-        }
-
-        .mobile-only { display: none; }
-        .pc-only { display: block; }
-
-        @media (max-width: 768px) {
-            h1 { display: none; }
-            header { gap: 8px; padding: 0 8px; }
-            .btn-control { padding: 6px 8px; font-size: 0.75rem; }
-            #canvas { padding: 10px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px; overflow-y: auto; }
-            .window { position: relative !important; left: auto !important; top: auto !important; resize: none !important; margin-bottom: 0; z-index: 1 !important; flex-shrink: 0; }
-            .win-header { cursor: default; }
-            .mobile-resize-handle { display: flex; } 
-            .mobile-only { display: inline-block; }
-            .pc-only { display: none; }
-        }
-
-        /* --- ファイル管理リスト用の追加CSS --- */
         .file-row {
             display: flex; align-items: center; justify-content: space-between;
             background: #4a5568; padding: 10px; border-radius: 4px; margin-bottom: 6px;
@@ -202,23 +199,54 @@
         .btn-load:hover { background-color: #48bb78; }
         .btn-trash { background-color: #e53e3e; }
         .btn-trash:hover { background-color: #fc8181; }
+
+        .input-group { display: flex; gap: 5px; }
+        .input-text {
+            background: #1a202c; border: 1px solid #4a5568; color: white;
+            padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box;
+        }
+
+        .mobile-only { display: none; }
+        .pc-only { display: block; }
+
+        @media (max-width: 768px) {
+            h1 { display: none; }
+            header { gap: 8px; padding: 0 8px; }
+            .btn-control { padding: 6px 8px; font-size: 0.75rem; }
+            /* ドッキングしていないウィンドウは通常配置 */
+            #canvas { padding: 10px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px; overflow-y: auto; }
+            
+            .window:not(.docked-bottom) { 
+                position: relative !important; left: auto !important; top: auto !important; 
+                resize: none !important; margin-bottom: 0; z-index: 1 !important; flex-shrink: 0; 
+            }
+            .window.docked-bottom { z-index: 9999 !important; }
+            
+            .win-header { cursor: default; }
+            .mobile-resize-handle { display: flex; } 
+            .mobile-only { display: inline-block; }
+            .pc-only { display: none; }
+            /* スマホで1/2ボタンなどを確実に表示させるための調整 */
+            .win-tools { overflow-x: auto; }
+        }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>Canvas v8.2</h1>
+        <h1>Canvas v9.0</h1>
         
-        <!-- 名前表示 (クリック不可) -->
+        <!-- UI非表示ボタン -->
+        <button class="btn-control btn-ui-toggle" onclick="toggleMinimalUI()" title="UI表示切替">👁️</button>
+
+        <!-- 名前表示 -->
         <div class="board-indicator">
             📁 <span id="current-board-name" class="board-name">default</span>
         </div>
 
-        <!-- 右寄せグループ -->
         <span id="status-indicator">Ready</span>
 
-        <!-- ボタンを一本化 -->
-        <button class="btn-control btn-cloud" onclick="openCloudModal()">☁️ クラウド接続</button>
+        <button class="btn-control btn-cloud" onclick="openCloudModal()">☁️ 接続</button>
 
         <div class="control-group">
             <label class="switch">
@@ -228,7 +256,7 @@
             <label for="autoSaveToggle" class="switch-label">Auto</label>
         </div>
 
-        <button class="btn-control" id="btn-manual-save" onclick="manualSaveAll()">💾 保存</button>
+        <button class="btn-control" id="btn-manual-save" onclick="manualSaveAll()">💾</button>
         <button class="btn-control" onclick="createNewWindow()">＋</button>
         <button class="btn-control btn-danger" onclick="clearAllData()">🗑️</button>
         
@@ -244,31 +272,23 @@
 
     <div id="canvas"></div>
 
-    <!-- 統合クラウド管理モーダル -->
+    <!-- クラウドモーダル -->
     <div id="cloudModal" class="modal-overlay" onclick="if(event.target===this) closeModal('cloudModal')">
         <div class="modal-box" style="max-width: 450px;">
             <h3 class="modal-title">☁️ クラウド連携</h3>
-            
             <div class="modal-body">
-                <!-- 上段：保存エリア -->
                 <div style="background:#2d3748; padding-bottom:15px; border-bottom:2px dashed #4a5568; margin-bottom:10px;">
                     <p style="margin:0 0 10px 0; font-size:0.9rem; color:#cbd5e0;">
                         現在のボード: <strong id="cloud-current-name" style="color:#63b3ed; font-size:1.1rem;">default</strong>
                     </p>
-                    
-                    <!-- 上書き保存ボタン -->
                     <button class="btn-control btn-cloud" style="width:100%; padding:10px; margin-bottom:10px; font-size:1rem;" onclick="processUpload(currentBoardName)">
                         ⬆️ この名前で上書き保存
                     </button>
-                    
-                    <!-- 別名保存 -->
                     <div class="input-group">
                         <input type="text" id="newBoardInput" class="input-text" placeholder="新しい名前で保存...">
                         <button class="btn-control" onclick="processUploadNew()">新規保存</button>
                     </div>
                 </div>
-
-                <!-- 下段：ファイルリストエリア -->
                 <div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                         <span style="font-size:0.85rem; color:#a0aec0;">クラウド上のファイル一覧:</span>
@@ -279,7 +299,6 @@
                     </div>
                 </div>
             </div>
-
             <div class="modal-footer">
                 <button class="btn-control" onclick="closeModal('cloudModal')">閉じる</button>
             </div>
@@ -300,8 +319,10 @@
         let isSaving = false;
         let saveTimers = {};
         let blobCache = {};
-        
         let currentBoardName = "default";
+        
+        // Minimal Mode State
+        let isMinimalMode = false;
 
         window.onload = async function() {
             await initDB();
@@ -316,6 +337,13 @@
             updateBoardDisplay();
             loadFromDB();
         };
+
+        // --- UI Toggle ---
+        function toggleMinimalUI() {
+            isMinimalMode = !isMinimalMode;
+            if(isMinimalMode) document.body.classList.add('minimal-mode');
+            else document.body.classList.remove('minimal-mode');
+        }
 
         async function getSetting(key) {
             try {
@@ -347,54 +375,37 @@
             document.getElementById('cloud-current-name').textContent = currentBoardName;
         }
 
-        // --- クラウド連携関連 ---
-
+        // --- Cloud Logic ---
         function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-
-        // 1. モーダルを開く（保存と一覧を同時に表示）
         async function openCloudModal() {
-            await manualSaveAll(); // ローカル保存
+            await manualSaveAll();
             document.getElementById('cloudModal').classList.add('show');
-            
-            // 現在のボード名を表示
             updateBoardDisplay();
             document.getElementById('newBoardInput').value = "";
-            
-            // リストを更新
             refreshBoardList();
         }
-
-        // 2. リスト取得
         async function refreshBoardList() {
             const listEl = document.getElementById('cloudList');
             listEl.innerHTML = '<div style="text-align:center; color:#718096; padding:20px;">一覧を取得中...</div>';
-            
             const pass = await getAuthPassword();
             if(!pass) { listEl.innerHTML='<div style="text-align:center;">認証が必要です</div>'; return; }
 
             try {
                 const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=list`;
                 const res = await fetch(url, { method: 'POST' });
-                
-                const text = await res.text();
-                let json;
-                try { json = JSON.parse(text); } catch(e) { throw new Error("サーバー応答エラー"); }
+                const json = await res.json();
 
                 if(json.status === 'success') {
                     listEl.innerHTML = '';
-                    if(json.boards.length === 0) {
-                        listEl.innerHTML = '<div style="padding:20px; text-align:center; color:#cbd5e0;">ファイルがありません</div>';
-                    } else {
+                    if(json.boards.length === 0) listEl.innerHTML = '<div style="padding:20px; text-align:center; color:#cbd5e0;">ファイルがありません</div>';
+                    else {
                         json.boards.forEach(name => {
                             const div = document.createElement('div');
                             div.className = 'file-row';
                             const isCurrent = (name === currentBoardName);
-                            const nameDisplay = isCurrent ? `👉 ${name}` : `📄 ${name}`;
-                            const bgStyle = isCurrent ? 'border-left: 3px solid #48bb78; background-color:#2f855a;' : '';
-                            
-                            div.style.cssText = bgStyle;
+                            if(isCurrent) div.style.cssText = 'border-left: 3px solid #48bb78; background-color:#2f855a;';
                             div.innerHTML = `
-                                <div class="file-name" onclick="processDownload('${name}')">${nameDisplay}</div>
+                                <div class="file-name" onclick="processDownload('${name}')">${isCurrent ? '👉 ' : '📄 '}${name}</div>
                                 <div class="file-actions">
                                     <button class="btn-mini btn-load" onclick="processDownload('${name}')">読込</button>
                                     <button class="btn-mini btn-trash" onclick="deleteBoard('${name}')">削除</button>
@@ -407,26 +418,19 @@
                     if(json.message && json.message.includes("合言葉")) await clearAuthPassword();
                     throw new Error(json.message);
                 }
-            } catch(e) { 
-                listEl.innerHTML = `<div style="color:#f56565; padding:10px; text-align:center;">エラー: ${e.message}</div>`; 
-            }
+            } catch(e) { listEl.innerHTML = `<div style="color:#f56565; padding:10px;">エラー: ${e.message}</div>`; }
         }
 
-        // 3. 新規保存処理
         async function processUploadNew() {
             const name = document.getElementById('newBoardInput').value.trim();
             if(!name) return alert("名前を入力してください");
             processUpload(name);
         }
 
-        // 4. アップロード処理（完了後にリストを更新）
         async function processUpload(boardName) {
-            const pass = await getAuthPassword();
-            if (!pass) return;
-            if(!confirm(`ボード「${boardName}」としてクラウドに保存しますか？`)) return;
-            
+            const pass = await getAuthPassword(); if (!pass) return;
+            if(!confirm(`ボード「${boardName}」として保存しますか？`)) return;
             updateStatus("送信中...", false);
-            
             try {
                 const tx = db.transaction([STORE_WINDOWS], 'readonly');
                 const req = tx.objectStore(STORE_WINDOWS).getAll();
@@ -443,56 +447,36 @@
                         text: r.text, hasMedia: r.hasMedia, mediaType: r.mediaType, mediaBase64: b64
                     });
                 }
-
                 const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&boardName=${encodeURIComponent(boardName)}`;
-                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(exportData) });
+                const res = await fetch(url, { method: 'POST', body: JSON.stringify(exportData) });
                 const json = await res.json();
                 
                 if(json.status === 'success') { 
                     currentBoardName = boardName;
                     await setSetting('current_board_name', currentBoardName);
-                    
-                    updateBoardDisplay(); 
-                    document.getElementById('newBoardInput').value = "";
-                    
-                    updateStatus("保存完了", true); 
-                    alert(`[${currentBoardName}] 保存しました`);
-                    
-                    refreshBoardList(); // リスト更新
-                } else { 
-                    throw new Error(json.message); 
-                }
+                    updateBoardDisplay(); document.getElementById('newBoardInput').value = "";
+                    updateStatus("保存完了", true); alert(`保存完了: ${currentBoardName}`);
+                    refreshBoardList(); 
+                } else throw new Error(json.message);
             } catch(e) { console.error(e); updateStatus("UP失敗", false, true); alert(e.message); }
         }
 
-        // 5. 削除処理
         async function deleteBoard(boardName) {
-            if(!confirm(`本当にクラウド上の「${boardName}」を削除しますか？\n（復元できません）`)) return;
-
+            if(!confirm(`「${boardName}」を削除しますか？`)) return;
             updateStatus("削除中...", false);
             const pass = await getAuthPassword();
-            
             try {
                 const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=delete&boardName=${encodeURIComponent(boardName)}`;
                 const res = await fetch(url, { method: 'POST' });
                 const json = await res.json();
-
-                if(json.status === 'success') {
-                    updateStatus("削除完了", true);
-                    refreshBoardList();
-                } else {
-                    throw new Error(json.message);
-                }
-            } catch(e) {
-                alert("削除失敗: " + e.message);
-                updateStatus("削除失敗", false, true);
-            }
+                if(json.status === 'success') { updateStatus("削除完了", true); refreshBoardList(); }
+                else throw new Error(json.message);
+            } catch(e) { alert("削除失敗: " + e.message); updateStatus("削除失敗", false, true); }
         }
 
-        // 6. ダウンロード処理
+        // 修正版 processDownload (Promise.all対応)
         async function processDownload(boardName) {
             if(!confirm(`ボード「${boardName}」を読み込みますか？\n(現在の作業内容は上書きされます)`)) return;
-            
             updateStatus("受信中...", false);
             const pass = await getAuthPassword(); 
             try {
@@ -505,29 +489,41 @@
 
                 await clearAllData(true); 
 
+                const savePromises = [];
                 for(let i=0; i<importData.length; i++) {
                     let r = importData[i];
                     let blob = null;
                     if(r.hasMedia && r.mediaBase64) blob = await base64ToBlob(r.mediaBase64);
                     if(blob) blobCache[r.id] = { blob: blob, type: r.mediaType };
+                    
                     let lPC = r.layoutPC || { x: r.x||'50px', y: r.y||'50px', w: r.w||'320px', h: r.h||'400px', z: r.z||100 };
                     let lMob = r.layoutMobile || { h: '350px', w: '100%' };
                     let fSize = r.fontSize || '14px';
                     let title = r.title || `Window ${r.id}`;
                     let order = (r.order !== undefined) ? r.order : i;
+                    
                     const record = {
                         id: r.id, title: title, order: order,
                         layoutPC: lPC, layoutMobile: lMob, fontSize: fSize,
                         text: r.text, hasMedia: r.hasMedia, mediaBlob: blob, mediaType: r.mediaType
                     };
-                    const tx = db.transaction([STORE_WINDOWS], 'readwrite');
-                    tx.objectStore(STORE_WINDOWS).put(record);
+                    
+                    const p = new Promise((resolve, reject) => {
+                        const tx = db.transaction([STORE_WINDOWS], 'readwrite');
+                        tx.objectStore(STORE_WINDOWS).put(record);
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = (e) => reject(e);
+                    });
+                    savePromises.push(p);
                 }
+
+                await Promise.all(savePromises);
+
                 currentBoardName = boardName;
                 await setSetting('current_board_name', currentBoardName);
                 
                 updateBoardDisplay();
-                loadFromDB();
+                loadFromDB(); 
                 
                 closeModal('cloudModal'); 
                 updateStatus("読込完了", true);
@@ -535,8 +531,7 @@
             } catch(e) { console.error(e); updateStatus("DOWN失敗", false, true); alert(e.message); }
         }
 
-        // --- 共通ユーティリティ ---
-
+        // --- Common Utils ---
         function blobToBase64(blob) { return new Promise((r,j)=>{const z=new FileReader();z.onloadend=()=>r(z.result);z.onerror=j;z.readAsDataURL(blob);}); }
         async function base64ToBlob(b64) { const r=await fetch(b64); return await r.blob(); }
 
@@ -558,25 +553,44 @@
             const el = document.getElementById(winId); if (!el) return;
             const idNum = parseInt(winId.split('-')[1]);
             const isMobile = window.innerWidth <= 768;
-            const tx = db.transaction([STORE_WINDOWS], 'readonly');
-            const old = await new Promise(r => { const req = tx.objectStore(STORE_WINDOWS).get(idNum); req.onsuccess = () => r(req.result); });
+            
             const ta = el.querySelector('textarea');
             const titleInput = el.querySelector('.win-title-input');
             const mediaLayer = document.getElementById(`media-${idNum}`);
-            const isMediaShow = mediaLayer.classList.contains('show');
+            // hasMediaはレイヤー自体が表示(show)されているかどうか、ではなくデータがあるか
+            // メディア非表示モード(hidden-media)でもデータは保持する
+            const hasMediaContent = mediaLayer.classList.contains('show'); 
+            
             let blob = null, type = null;
-            if (isMediaShow && blobCache[idNum]) { blob = blobCache[idNum].blob; type = blobCache[idNum].type; }
+            if (hasMediaContent && blobCache[idNum]) { blob = blobCache[idNum].blob; type = blobCache[idNum].type; }
+            
             const allWins = Array.from(document.getElementById('canvas').children);
             const myOrder = allWins.indexOf(el);
+
+            // 前のデータを取得してマージ
+            const tx = db.transaction([STORE_WINDOWS], 'readonly');
+            const old = await new Promise(r => { const req = tx.objectStore(STORE_WINDOWS).get(idNum); req.onsuccess = () => r(req.result); });
+            
             let layoutPC = (old && old.layoutPC) ? old.layoutPC : { x:'50px', y:'50px', w:'320px', h:'400px', z:100 };
             let layoutMobile = (old && old.layoutMobile) ? old.layoutMobile : { h:'350px', w:'100%' };
+            
+            // ドッキング状態の保存
+            layoutMobile.isDocked = el.classList.contains('docked-bottom');
+
+            if (isMobile) { 
+                if(!layoutMobile.isDocked) { // ドッキング中は高さなどを保存しない（固定値のため）
+                     layoutMobile.h = el.style.height; layoutMobile.w = el.style.width; 
+                }
+            } else { 
+                layoutPC.x = el.style.left; layoutPC.y = el.style.top; layoutPC.w = el.style.width; layoutPC.h = el.style.height; layoutPC.z = parseInt(el.style.zIndex || 100); 
+            }
+            
             let fontSize = el.style.getPropertyValue('--font-size') || '14px';
-            if (isMobile) { layoutMobile.h = el.style.height; layoutMobile.w = el.style.width; } 
-            else { layoutPC.x = el.style.left; layoutPC.y = el.style.top; layoutPC.w = el.style.width; layoutPC.h = el.style.height; layoutPC.z = parseInt(el.style.zIndex || 100); }
+
             const data = {
                 id: idNum, title: titleInput.value, order: myOrder,
                 layoutPC: layoutPC, layoutMobile: layoutMobile, fontSize: fontSize,
-                text: ta.value, hasMedia: isMediaShow, mediaBlob: blob, mediaType: type
+                text: ta.value, hasMedia: hasMediaContent, mediaBlob: blob, mediaType: type
             };
             return new Promise(res => {
                 const tx2 = db.transaction([STORE_WINDOWS], 'readwrite');
@@ -646,11 +660,16 @@
             const winId='win-'+idNum;
             const isMobile = window.innerWidth <= 768;
             const initialTitle = title || `Window ${idNum}`;
+            
+            // レイアウト計算
             let styleStr = "";
             let w = '320px', h = '400px', z = null;
+            let isDocked = false;
+
             if (isMobile) {
                 h = (layoutMobile && layoutMobile.h) ? layoutMobile.h : '350px';
                 let wMob = (layoutMobile && layoutMobile.w) ? layoutMobile.w : '100%';
+                if(layoutMobile && layoutMobile.isDocked) isDocked = true;
                 styleStr = `height:${h}; width:${wMob}; --font-size:${fontSize};`;
             } else {
                 if (layoutPC) { x = layoutPC.x; y = layoutPC.y; w = layoutPC.w; h = layoutPC.h; z = layoutPC.z; }
@@ -658,10 +677,16 @@
                 else if(z>zIndexCounter) zIndexCounter=z;
                 styleStr = `left:${x}; top:${y}; width:${w}; height:${h}; z-index:${z}; --font-size:${fontSize};`;
             }
-            const cvs=document.getElementById('canvas');
+            
             const div=document.createElement('div');
-            div.className='window'; div.id=winId; div.style.cssText = styleStr;
+            div.className='window' + (isDocked ? ' docked-bottom' : '');
+            div.id=winId; div.style.cssText = styleStr;
+            
+            if(isDocked) updateCanvasPadding(250); // ドッキング時の余白確保
+
             const widthBtnLabel = (div.style.width === '100%' || !div.style.width) ? '1/2' : 'Full';
+            const dockBtnClass = isDocked ? 'btn-active' : '';
+
             div.innerHTML=`
                 <div class="win-header" onmousedown="startDrag(event,'${winId}')">
                     <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', -1)">↑</button>
@@ -678,48 +703,147 @@
                         <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, -2)">A-</button>
                         <button class="btn-tool" onclick="resetFontSize(${idNum})" title="Reset">Def</button>
                         <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, 2)">A+</button>
+                        
+                        <!-- モバイル用追加機能群 -->
                         <button class="btn-tool mobile-only" id="btn-width-${idNum}" onclick="toggleMobileWidth(${idNum})">${widthBtnLabel}</button>
+                        <button class="btn-tool mobile-only ${dockBtnClass}" id="btn-dock-${idNum}" onclick="toggleDock(${idNum})" title="画面下に固定">⚓</button>
+                        <button class="btn-tool" id="btn-media-toggle-${idNum}" onclick="toggleMediaVisibility(${idNum})" title="メディア表示切替" style="display:none;">🎬</button>
                     </div>
                     <textarea id="text-${idNum}" style="font-size:${fontSize};" oninput="notifyChange('${winId}')"></textarea>
+                    
                     <div id="media-${idNum}" class="media-layer">
-                        <button class="btn-close-media" onclick="closeMedia(${idNum})">×</button>
+                        <button class="btn-close-media" onclick="closeMedia(${idNum})">🗑️ 削除</button>
                         <div id="media-content-${idNum}" style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;"></div>
                     </div>
                     <div class="mobile-resize-handle" onmousedown="event.stopPropagation()" ontouchstart="startMobileResize(event, '${winId}')"></div>
                 </div>`;
-            cvs.appendChild(div);
+            
+            document.getElementById('canvas').appendChild(div);
+
             div.addEventListener('mouseup', ()=> { if(currentDragWin!==div) notifyChange(winId); });
             div.querySelector('textarea').addEventListener('scroll', (e)=>{ if(document.getElementById('syncToggle').checked) { const t=e.target.scrollTop; document.querySelectorAll('textarea').forEach(ta=>{ if(ta!==e.target && ta.offsetParent) ta.scrollTop=t; }); } });
-            bringToFront(winId);
+            
+            if(!isDocked) bringToFront(winId);
             return div;
         }
+
         function restoreWindow(r) {
             let lPC = r.layoutPC || { x:r.x, y:r.y, w:r.w, h:r.h, z:r.z };
             const w = addWindow(0,0,r.id, lPC, r.layoutMobile, r.fontSize, r.title);
             if(r.text) w.querySelector('textarea').value=r.text;
-            if(r.hasMedia && r.mediaBlob) { blobCache[r.id]={blob:r.mediaBlob, type:r.mediaType}; showMedia(r.id, r.mediaBlob, r.mediaType); }
+            if(r.hasMedia && r.mediaBlob) { 
+                blobCache[r.id]={blob:r.mediaBlob, type:r.mediaType}; 
+                showMedia(r.id, r.mediaBlob, r.mediaType); 
+            }
         }
-        function removeWindow(id) { if(confirm("このウィンドウを削除しますか？")){ const el=document.getElementById(id); if(el){ el.remove(); deleteWindowFromDB(parseInt(id.split('-')[1])); } } }
-        function moveWindow(winId, dir) { const el = document.getElementById(winId); const parent = el.parentNode; if (dir === -1) { if (el.previousElementSibling) { parent.insertBefore(el, el.previousElementSibling); manualSaveAll(); } } else { if (el.nextElementSibling) { parent.insertBefore(el.nextElementSibling, el); manualSaveAll(); } } }
-        function toggleMobileWidth(idNum) { const win = document.getElementById(`win-${idNum}`); const btn = document.getElementById(`btn-width-${idNum}`); const currentW = win.style.width; if (currentW === '100%' || !currentW) { win.style.width = 'calc(50% - 5px)'; btn.textContent = 'Full'; } else { win.style.width = '100%'; btn.textContent = '1/2'; } notifyChange(`win-${idNum}`); }
+        function removeWindow(id) { 
+            if(confirm("削除しますか？")){ 
+                const el=document.getElementById(id); 
+                if(el){ 
+                    // ドッキングしていたら解除して余白戻す
+                    if(el.classList.contains('docked-bottom')) updateCanvasPadding(0);
+                    el.remove(); 
+                    deleteWindowFromDB(parseInt(id.split('-')[1])); 
+                } 
+            } 
+        }
+        
+        // --- Mobile Logic ---
+        function toggleMobileWidth(idNum) { 
+            const win = document.getElementById(`win-${idNum}`); 
+            const btn = document.getElementById(`btn-width-${idNum}`); 
+            const currentW = win.style.width; 
+            if (currentW === '100%' || !currentW) { win.style.width = 'calc(50% - 5px)'; btn.textContent = 'Full'; } 
+            else { win.style.width = '100%'; btn.textContent = '1/2'; } 
+            notifyChange(`win-${idNum}`); 
+        }
+
+        // Dock Logic
+        function toggleDock(idNum) {
+            const winId = `win-${idNum}`;
+            const win = document.getElementById(winId);
+            const btn = document.getElementById(`btn-dock-${idNum}`);
+            const wasDocked = win.classList.contains('docked-bottom');
+
+            // 他にドッキングしているウィンドウがあれば解除する（1つのみ許可）
+            document.querySelectorAll('.window.docked-bottom').forEach(w => {
+                w.classList.remove('docked-bottom');
+                const oid = w.id.split('-')[1];
+                const b = document.getElementById(`btn-dock-${oid}`);
+                if(b) b.classList.remove('btn-active');
+            });
+
+            if(!wasDocked) {
+                win.classList.add('docked-bottom');
+                btn.classList.add('btn-active');
+                updateCanvasPadding(250); // 固定ウィンドウの高さ分
+            } else {
+                updateCanvasPadding(0);
+            }
+            notifyChange(winId);
+        }
+        function updateCanvasPadding(px) {
+            document.getElementById('canvas').style.paddingBottom = px + 'px';
+        }
+
+        // Media Visibility Toggle
+        function toggleMediaVisibility(idNum) {
+            const layer = document.getElementById(`media-${idNum}`);
+            layer.classList.toggle('hidden-media');
+            // アイコンの状態を変えるなどの演出はお好みで
+        }
+        
+        // --- Resize/Font ---
         let resizingWin = null; let startTouchY = 0; let startHeight = 0;
         function startMobileResize(e, winId) { e.preventDefault(); resizingWin = document.getElementById(winId); const touch = e.touches[0]; startTouchY = touch.clientY; startHeight = parseInt(window.getComputedStyle(resizingWin).height, 10); document.addEventListener('touchmove', onMobileResizeMove, {passive: false}); document.addEventListener('touchend', onMobileResizeEnd); }
         function onMobileResizeMove(e) { if (!resizingWin) return; e.preventDefault(); const touch = e.touches[0]; const newH = startHeight + (touch.clientY - startTouchY); if (newH > 100) resizingWin.style.height = newH + 'px'; }
         function onMobileResizeEnd(e) { if (resizingWin) notifyChange(resizingWin.id); resizingWin = null; document.removeEventListener('touchmove', onMobileResizeMove); document.removeEventListener('touchend', onMobileResizeEnd); }
         function changeFontSize(idNum, delta) { const ta = document.getElementById(`text-${idNum}`); const win = document.getElementById(`win-${idNum}`); if(!ta) return; let current = parseInt(win.style.getPropertyValue('--font-size') || "14"); let next = current + delta; if(next < 10) next = 10; if(next > 60) next = 60; const sizeStr = next + "px"; ta.style.fontSize = sizeStr; win.style.setProperty('--font-size', sizeStr); notifyChange(`win-${idNum}`); }
         function resetFontSize(idNum) { const ta = document.getElementById(`text-${idNum}`); const win = document.getElementById(`win-${idNum}`); if(!ta) return; ta.style.fontSize = "14px"; win.style.setProperty('--font-size', "14px"); notifyChange(`win-${idNum}`); }
+        
+        // --- Drag & Paste ---
         let currentDragWin=null, dx=0, dy=0;
-        function startDrag(e,id) { if(e.target.tagName==='INPUT' || e.target.tagName==='BUTTON') return; if(window.innerWidth<=768)return; const w=document.getElementById(id); bringToFront(id); currentDragWin=w; dx=e.clientX-w.offsetLeft; dy=e.clientY-w.offsetTop; document.addEventListener('mousemove',onMouseMove); document.addEventListener('mouseup',onMouseUp); }
+        function startDrag(e,id) { 
+            const w=document.getElementById(id);
+            if(w.classList.contains('docked-bottom')) return; // ドッキング中は移動不可
+            if(e.target.tagName==='INPUT' || e.target.tagName==='BUTTON') return; 
+            if(window.innerWidth<=768)return; 
+            bringToFront(id); currentDragWin=w; dx=e.clientX-w.offsetLeft; dy=e.clientY-w.offsetTop; document.addEventListener('mousemove',onMouseMove); document.addEventListener('mouseup',onMouseUp); 
+        }
         function onMouseMove(e){ if(!currentDragWin)return; let nx=e.clientX-dx, ny=e.clientY-dy; if(ny<0)ny=0; currentDragWin.style.left=nx+'px'; currentDragWin.style.top=ny+'px'; }
         function onMouseUp(){ if(currentDragWin) notifyChange(currentDragWin.id); currentDragWin=null; document.removeEventListener('mousemove',onMouseMove); document.removeEventListener('mouseup',onMouseUp); }
+        
         function bringToFront(id){ const w=document.getElementById(id); zIndexCounter++; w.style.zIndex=zIndexCounter; document.querySelectorAll('.window').forEach(e=>e.classList.remove('active')); w.classList.add('active'); notifyChange(id); }
+        function moveWindow(winId, dir) { const el = document.getElementById(winId); const parent = el.parentNode; if (dir === -1) { if (el.previousElementSibling) { parent.insertBefore(el, el.previousElementSibling); manualSaveAll(); } } else { if (el.nextElementSibling) { parent.insertBefore(el.nextElementSibling, el); manualSaveAll(); } } }
+
         async function pasteToArea(id){ try{ const t=await navigator.clipboard.readText(); const ta=document.getElementById('text-'+id); const start = ta.selectionStart; const end = ta.selectionEnd; const val = ta.value; ta.value = val.substring(0, start) + t + val.substring(end); notifyChange('win-'+id); }catch(e){alert('ペースト権限なし');} }
         function formatContent(id){ const ta=document.getElementById('text-'+id); let t=ta.value; if(!t)return; t=t.replace(/\r\n/g,'\n').replace(/([^\n])(【)/g,'$1\n\n$2').replace(/\s+(\d+\.)/g,'\n$1').replace(/([^\n])(「)/g,(m,p1,p2)=> /[\d\.\s]/.test(p1)?m:p1+'\n'+p2).replace(/(」)(\s+)(\d+\.)/g,'$1\n$3'); ta.value=t; notifyChange('win-'+id); }
-        function showMedia(id,blob,type) { const c=document.getElementById(`media-content-${id}`); c.innerHTML=''; const url=URL.createObjectURL(blob); let el; if(type.startsWith('image/')) { el=document.createElement('img'); el.src=url; } else if(type.startsWith('video/')) { el=document.createElement('video'); el.src=url; el.controls=true; el.loop=true; el.muted=true; el.playsInline=true; } if(el){ el.className='media-content'; c.appendChild(el); document.getElementById(`media-${id}`).classList.add('show'); } }
+        
+        function showMedia(id,blob,type) { 
+            const c=document.getElementById(`media-content-${id}`); c.innerHTML=''; 
+            const url=URL.createObjectURL(blob); let el; 
+            if(type.startsWith('image/')) { el=document.createElement('img'); el.src=url; } 
+            else if(type.startsWith('video/')) { el=document.createElement('video'); el.src=url; el.controls=true; el.loop=true; el.muted=true; el.playsInline=true; } 
+            if(el){ 
+                el.className='media-content'; c.appendChild(el); 
+                document.getElementById(`media-${id}`).classList.add('show');
+                // メディアトグルボタンを表示
+                document.getElementById(`btn-media-toggle-${id}`).style.display = 'inline-block';
+            } 
+        }
         function handleDragOver(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.add('drag-over-active'); }
         function handleDragLeave(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.remove('drag-over-active'); }
         function handleDrop(e,winId){ e.preventDefault(); e.stopPropagation(); document.getElementById(winId).classList.remove('drag-over-active'); const f=e.dataTransfer.files[0]; if(!f)return; const id=parseInt(winId.split('-')[1]); blobCache[id]={blob:f, type:f.type}; showMedia(id,f,f.type); notifyChange(winId); }
-        function closeMedia(id){ document.getElementById(`media-${id}`).classList.remove('show'); const c=document.getElementById(`media-content-${id}`); if(c.firstChild) URL.revokeObjectURL(c.firstChild.src); c.innerHTML=''; delete blobCache[id]; notifyChange('win-'+id); }
+        function closeMedia(id){ 
+            if(!confirm("メディアを削除しますか？")) return;
+            document.getElementById(`media-${id}`).classList.remove('show'); 
+            const c=document.getElementById(`media-content-${id}`); 
+            if(c.firstChild) URL.revokeObjectURL(c.firstChild.src); 
+            c.innerHTML=''; 
+            delete blobCache[id]; 
+            document.getElementById(`btn-media-toggle-${id}`).style.display = 'none';
+            notifyChange('win-'+id); 
+        }
     </script>
 </body>
 </html>
