@@ -81,6 +81,21 @@
         }
 
         /* --- ウィンドウ --- */
+
+        /* テキスト操作系ボタンをまとめるグループ */
+        .tools-text-group {
+            display: flex; gap: 4px; align-items: center;
+        }
+
+        /* ウィンドウがメディアモード（画像・動画表示中）の時、テキストツールを隠す */
+        .window.media-mode .tools-text-group {
+            display: none;
+        }
+
+        /* メディアモード時はメディア削除ボタンなどを右側に寄せるための調整 */
+        .window.media-mode .win-tools {
+            justify-content: flex-end;
+        }
         .window {
             position: absolute; background-color: #222630;
             border: 1px solid #4a5568; border-radius: 6px;
@@ -559,55 +574,71 @@
         }
         
         async function saveWindowToDB(winId) {
-            if (!db) return;
-            const el = document.getElementById(winId); if (!el) return;
-            const idNum = parseInt(winId.split('-')[1]);
-            const isMobile = window.innerWidth <= 768;
-            
-            const ta = el.querySelector('textarea');
-            const titleInput = el.querySelector('.win-title-input');
-            const mediaLayer = document.getElementById(`media-${idNum}`);
-            // hasMediaはレイヤー自体が表示(show)されているかどうか、ではなくデータがあるか
-            // メディア非表示モード(hidden-media)でもデータは保持する
-            const hasMediaContent = mediaLayer.classList.contains('show'); 
-            
-            let blob = null, type = null;
-            if (hasMediaContent && blobCache[idNum]) { blob = blobCache[idNum].blob; type = blobCache[idNum].type; }
-            
-            const allWins = Array.from(document.getElementById('canvas').children);
-            const myOrder = allWins.indexOf(el);
+        if (!db) return;
+        const el = document.getElementById(winId); if (!el) return;
+        const idNum = parseInt(winId.split('-')[1]);
+        const isMobile = window.innerWidth <= 768;
+        
+        const ta = el.querySelector('textarea');
+        const titleInput = el.querySelector('.win-title-input');
+        const mediaLayer = document.getElementById(`media-${idNum}`);
+        
+        // データとしてのメディア保持判定（表示・非表示に関わらずデータがあればtrue）
+        // ただし、UI制御のために show クラスの状態も見ておきたいが、
+        // ここでは「データ保存」なので、あくまでblobがあるかどうか等を重視
+        const hasMediaContent = !!blobCache[idNum]; 
 
-            // 前のデータを取得してマージ
-            const tx = db.transaction([STORE_WINDOWS], 'readonly');
-            const old = await new Promise(r => { const req = tx.objectStore(STORE_WINDOWS).get(idNum); req.onsuccess = () => r(req.result); });
-            
-            let layoutPC = (old && old.layoutPC) ? old.layoutPC : { x:'50px', y:'50px', w:'320px', h:'400px', z:100 };
-            let layoutMobile = (old && old.layoutMobile) ? old.layoutMobile : { h:'350px', w:'100%' };
-            
-            // ドッキング状態の保存
-            layoutMobile.isDocked = el.classList.contains('docked-bottom');
+        let blob = null, type = null;
+        if (hasMediaContent) { blob = blobCache[idNum].blob; type = blobCache[idNum].type; }
+        
+        const allWins = Array.from(document.getElementById('canvas').children);
+        const myOrder = allWins.indexOf(el);
 
-            if (isMobile) { 
-                if(!layoutMobile.isDocked) { // ドッキング中は高さなどを保存しない（固定値のため）
-                     layoutMobile.h = el.style.height; layoutMobile.w = el.style.width; 
-                }
-            } else { 
-                layoutPC.x = el.style.left; layoutPC.y = el.style.top; layoutPC.w = el.style.width; layoutPC.h = el.style.height; layoutPC.z = parseInt(el.style.zIndex || 100); 
+        // 前のデータを取得してマージ（反対側のデバイス設定を保持するため）
+        const tx = db.transaction([STORE_WINDOWS], 'readonly');
+        const old = await new Promise(r => { const req = tx.objectStore(STORE_WINDOWS).get(idNum); req.onsuccess = () => r(req.result); });
+        
+        // 既存データの読み込み（なければ初期値）
+        let layoutPC = (old && old.layoutPC) ? old.layoutPC : { x:'50px', y:'50px', w:'320px', h:'400px', z:100, fontSize: '14px' };
+        let layoutMobile = (old && old.layoutMobile) ? old.layoutMobile : { h:'350px', w:'100%', fontSize: '14px' };
+        
+        // 現在のフォントサイズを取得
+        let currentFontSize = el.style.getPropertyValue('--font-size') || '14px';
+
+        // ドッキング状態の保存
+        const isDocked = el.classList.contains('docked-bottom');
+        layoutMobile.isDocked = isDocked;
+
+        if (isMobile) { 
+            // モバイル操作時：モバイル用設定を更新
+            if(!isDocked) {
+                    layoutMobile.h = el.style.height; layoutMobile.w = el.style.width; 
             }
-            
-            let fontSize = el.style.getPropertyValue('--font-size') || '14px';
-
-            const data = {
-                id: idNum, title: titleInput.value, order: myOrder,
-                layoutPC: layoutPC, layoutMobile: layoutMobile, fontSize: fontSize,
-                text: ta.value, hasMedia: hasMediaContent, mediaBlob: blob, mediaType: type
-            };
-            return new Promise(res => {
-                const tx2 = db.transaction([STORE_WINDOWS], 'readwrite');
-                tx2.objectStore(STORE_WINDOWS).put(data);
-                tx2.oncomplete = () => { updateStatus('保存済', true); res(); };
-            });
+            layoutMobile.fontSize = currentFontSize;
+            // PC用は old のまま維持
+        } else { 
+            // PC操作時：PC用設定を更新
+            layoutPC.x = el.style.left; layoutPC.y = el.style.top; 
+            layoutPC.w = el.style.width; layoutPC.h = el.style.height; 
+            layoutPC.z = parseInt(el.style.zIndex || 100);
+            layoutPC.fontSize = currentFontSize;
+            // モバイル用は old のまま維持
         }
+        
+        // 旧仕様（ルートのfontSize）も互換性のため一応残すが、基本は layout オブジェクト内を使う
+        const data = {
+            id: idNum, title: titleInput.value, order: myOrder,
+            layoutPC: layoutPC, layoutMobile: layoutMobile, 
+            fontSize: currentFontSize, // 互換用
+            text: ta.value, hasMedia: hasMediaContent, mediaBlob: blob, mediaType: type
+        };
+
+        return new Promise(res => {
+            const tx2 = db.transaction([STORE_WINDOWS], 'readwrite');
+            tx2.objectStore(STORE_WINDOWS).put(data);
+            tx2.oncomplete = () => { updateStatus('保存済', true); res(); };
+        });
+    }
         async function deleteWindowFromDB(id) {
             if(!db) return;
             const tx = db.transaction([STORE_WINDOWS], 'readwrite');
@@ -666,7 +697,7 @@
             let max=0; document.querySelectorAll('.window').forEach(w=>{ const id=parseInt(w.id.split('-')[1]); if(id>max) max=id; });
             addWindow(50,50,max+1);
         }
-        function addWindow(x,y,idNum, layoutPC=null, layoutMobile=null, fontSize='14px', title=null) {
+        function addWindow(x,y,idNum, layoutPC=null, layoutMobile=null, fontSize=null, title=null) {
             const winId='win-'+idNum;
             const isMobile = window.innerWidth <= 768;
             const initialTitle = title || `Window ${idNum}`;
@@ -675,24 +706,33 @@
             let styleStr = "";
             let w = '320px', h = '400px', z = null;
             let isDocked = false;
+            
+            // フォントサイズの決定（引数で渡されなければデフォルト）
+            let targetFontSize = fontSize || '14px';
 
             if (isMobile) {
                 h = (layoutMobile && layoutMobile.h) ? layoutMobile.h : '350px';
                 let wMob = (layoutMobile && layoutMobile.w) ? layoutMobile.w : '100%';
                 if(layoutMobile && layoutMobile.isDocked) isDocked = true;
-                styleStr = `height:${h}; width:${wMob}; --font-size:${fontSize};`;
+                // 引数がnullだった場合、layoutMobile内のfontSizeを確認
+                if (!fontSize && layoutMobile && layoutMobile.fontSize) targetFontSize = layoutMobile.fontSize;
+                
+                styleStr = `height:${h}; width:${wMob}; --font-size:${targetFontSize};`;
             } else {
                 if (layoutPC) { x = layoutPC.x; y = layoutPC.y; w = layoutPC.w; h = layoutPC.h; z = layoutPC.z; }
+                // 引数がnullだった場合、layoutPC内のfontSizeを確認
+                if (!fontSize && layoutPC && layoutPC.fontSize) targetFontSize = layoutPC.fontSize;
+
                 if(z===null || z===undefined){ zIndexCounter++; z=zIndexCounter; }
                 else if(z>zIndexCounter) zIndexCounter=z;
-                styleStr = `left:${x}; top:${y}; width:${w}; height:${h}; z-index:${z}; --font-size:${fontSize};`;
+                styleStr = `left:${x}; top:${y}; width:${w}; height:${h}; z-index:${z}; --font-size:${targetFontSize};`;
             }
             
             const div=document.createElement('div');
             div.className='window' + (isDocked ? ' docked-bottom' : '');
             div.id=winId; div.style.cssText = styleStr;
             
-            if(isDocked) updateCanvasPadding(250); // ドッキング時の余白確保
+            if(isDocked) updateCanvasPadding(250);
 
             const widthBtnLabel = (div.style.width === '100%' || !div.style.width) ? '1/2' : 'Full';
             const dockBtnClass = isDocked ? 'btn-active' : '';
@@ -707,29 +747,30 @@
                 </div>
                 <div class="win-body" onmousedown="bringToFront('${winId}')" ondragover="handleDragOver(event,this)" ondragleave="handleDragLeave(event,this)" ondrop="handleDrop(event,'${winId}')">
                     <div class="win-tools">
-                        <button class="btn-tool" onclick="pasteToArea(${idNum})">Paste</button>
-                        <button class="btn-tool btn-format" onclick="formatContent(${idNum})">整形</button>
-                        
-                        <!-- ★ここにメディア削除ボタンを追加（初期は非表示 display:none） -->
-                        <button class="btn-tool btn-danger" id="btn-media-del-${idNum}" onclick="closeMedia(${idNum})" title="メディア削除" style="display:none; padding:4px 6px;">🗑️</button>
+                        <!-- ▼ グループ化: メディア表示時に隠れるボタン群 ▼ -->
+                        <div class="tools-text-group">
+                            <button class="btn-tool" onclick="pasteToArea(${idNum})">Paste</button>
+                            <button class="btn-tool btn-format" onclick="formatContent(${idNum})">整形</button>
+                            <div style="width:5px;"></div>
+                            <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, -2)">A-</button>
+                            <button class="btn-tool" onclick="resetFontSize(${idNum})" title="Reset">Def</button>
+                            <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, 2)">A+</button>
+                        </div>
+                        <!-- ▲ グループ化ここまで ▲ -->
 
+                        <!-- 常に表示しておきたいボタンやメディア操作系 -->
                         <div style="flex-grow:1;"></div>
-                        <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, -2)">A-</button>
-                        <button class="btn-tool" onclick="resetFontSize(${idNum})" title="Reset">Def</button>
-                        <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, 2)">A+</button>
                         
+                        <button class="btn-tool btn-danger" id="btn-media-del-${idNum}" onclick="closeMedia(${idNum})" title="メディア削除" style="display:none; padding:4px 6px;">🗑️</button>
+                        <button class="btn-tool" id="btn-media-toggle-${idNum}" onclick="toggleMediaVisibility(${idNum})" title="表示切替" style="display:none;">🎬</button>
+
                         <button class="btn-tool mobile-only" id="btn-width-${idNum}" onclick="toggleMobileWidth(${idNum})">${widthBtnLabel}</button>
                         <button class="btn-tool mobile-only ${dockBtnClass}" id="btn-dock-${idNum}" onclick="toggleDock(${idNum})" title="画面下に固定">⚓</button>
-                        
-                        <!-- 表示切替ボタン（これは残す） -->
-                        <button class="btn-tool" id="btn-media-toggle-${idNum}" onclick="toggleMediaVisibility(${idNum})" title="メディア表示切替" style="display:none;">🎬</button>
                     </div>
                     
-                    <textarea id="text-${idNum}" style="font-size:${fontSize};" oninput="notifyChange('${winId}')"></textarea>
+                    <textarea id="text-${idNum}" style="font-size:${targetFontSize};" oninput="notifyChange('${winId}')"></textarea>
                     
-                    <!-- メディアレイヤー（削除ボタンはここから除去） -->
                     <div id="media-${idNum}" class="media-layer">
-                        <!-- ★ここにあった btn-close-media は削除しました★ -->
                         <div id="media-content-${idNum}" style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;"></div>
                     </div>
                     
@@ -746,8 +787,17 @@
         }
 
         function restoreWindow(r) {
-            let lPC = r.layoutPC || { x:r.x, y:r.y, w:r.w, h:r.h, z:r.z };
-            const w = addWindow(0,0,r.id, lPC, r.layoutMobile, r.fontSize, r.title);
+            // 互換性のため古いfontSizeも考慮しつつ、addWindow側で判断させるためnullを渡すか検討
+            // ここではあえて明示的に layoutPC/layoutMobile を渡すだけに留める
+            // （addWindow内で isMobile 判定を行い、適切なプロパティを採用する）
+            
+            let lPC = r.layoutPC || { x:r.x, y:r.y, w:r.w, h:r.h, z:r.z, fontSize: r.fontSize };
+            // 古いデータには layoutMobile がない場合があるので補完
+            let lMob = r.layoutMobile || { h: '350px', w: '100%', fontSize: r.fontSize };
+
+            // 第6引数(fontSize)は null を渡して addWindow 内のロジックに任せる
+            const w = addWindow(0,0,r.id, lPC, lMob, null, r.title);
+            
             if(r.text) w.querySelector('textarea').value=r.text;
             if(r.hasMedia && r.mediaBlob) { 
                 blobCache[r.id]={blob:r.mediaBlob, type:r.mediaType}; 
@@ -804,11 +854,19 @@
             document.getElementById('canvas').style.paddingBottom = px + 'px';
         }
 
-        // Media Visibility Toggle
         function toggleMediaVisibility(idNum) {
             const layer = document.getElementById(`media-${idNum}`);
+            const win = document.getElementById(`win-${idNum}`);
+            
             layer.classList.toggle('hidden-media');
-            // アイコンの状態を変えるなどの演出はお好みで
+            
+            // メディアが隠されたら、テキストツールを復活させる（media-modeを外す）
+            // メディアが表示されたら、テキストツールを隠す（media-modeを付ける）
+            if(layer.classList.contains('hidden-media')) {
+                win.classList.remove('media-mode');
+            } else {
+                win.classList.add('media-mode');
+            }
         }
         
         // --- Resize/Font ---
@@ -863,9 +921,13 @@
             else if(type.startsWith('video/')) { el=document.createElement('video'); el.src=url; el.controls=true; el.loop=true; el.muted=true; el.playsInline=true; } 
             if(el){ 
                 el.className='media-content'; c.appendChild(el); 
-                document.getElementById(`media-${id}`).classList.add('show');
+                const layer = document.getElementById(`media-${id}`);
+                layer.classList.add('show');
+                layer.classList.remove('hidden-media'); // 表示時は強制的にhidden解除
                 
-                // ★追加：2つのボタンを表示状態にする
+                // ★UI制御: ウィンドウにクラス付与してツールを隠す
+                document.getElementById(`win-${id}`).classList.add('media-mode');
+
                 document.getElementById(`btn-media-toggle-${id}`).style.display = 'inline-block';
                 document.getElementById(`btn-media-del-${id}`).style.display = 'inline-block';
             } 
@@ -875,13 +937,17 @@
         function handleDrop(e,winId){ e.preventDefault(); e.stopPropagation(); document.getElementById(winId).classList.remove('drag-over-active'); const f=e.dataTransfer.files[0]; if(!f)return; const id=parseInt(winId.split('-')[1]); blobCache[id]={blob:f, type:f.type}; showMedia(id,f,f.type); notifyChange(winId); }
         function closeMedia(id){ 
             if(!confirm("メディアを削除しますか？")) return;
-            document.getElementById(`media-${id}`).classList.remove('show'); 
+            document.getElementById(`media-${id}`).classList.remove('show');
+            document.getElementById(`media-${id}`).classList.remove('hidden-media');
+            
             const c=document.getElementById(`media-content-${id}`); 
             if(c.firstChild) URL.revokeObjectURL(c.firstChild.src); 
             c.innerHTML=''; 
             delete blobCache[id]; 
             
-            // ★追加：2つのボタンを非表示に戻す
+            // ★UI制御: クラス除去してツールを再表示
+            document.getElementById(`win-${id}`).classList.remove('media-mode');
+
             document.getElementById(`btn-media-toggle-${id}`).style.display = 'none';
             document.getElementById(`btn-media-del-${id}`).style.display = 'none';
             
