@@ -1,0 +1,321 @@
+/* --- 全体設定 --- */
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            background-color: #1a202c;
+            background-image: radial-gradient(#2d3748 1px, transparent 1px);
+            background-size: 20px 20px;
+            color: #e2e8f0; margin: 0; padding: 0; height: 100vh;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* --- ヘッダー --- */
+        header {
+            background-color: #171923; border-bottom: 1px solid #4a5568;
+            padding: 0 10px; height: 50px; display: flex; align-items: center;
+            gap: 10px; flex-shrink: 0; z-index: 10000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5); overflow-x: auto; white-space: nowrap;
+        }
+        header::-webkit-scrollbar { display: none; } 
+        h1 { font-size: 1rem; color: #a0aec0; margin-right: 5px; font-weight: normal; }
+
+        /* --- タブ表示 --- */
+        .tabs-container {
+            display: flex;
+            background-color: #1a202c;
+            border-radius: 4px;
+            border: 1px solid #4a5568;
+            overflow: hidden;
+            margin-right: auto;
+            flex-shrink: 0;
+        }
+        .tab {
+            padding: 4px 12px;
+            font-size: 0.85rem;
+            color: #a0aec0;
+            cursor: pointer;
+            border-right: 1px solid #4a5568;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background-color: #2d3748;
+        }
+        .tab:last-child {
+            border-right: none;
+        }
+        .tab.active {
+            background-color: #2b6cb0;
+            color: white;
+            font-weight: bold;
+        }
+        .tab-name { color: #90cdf4; font-weight: bold; }
+        .tab.active .tab-name { color: white; }
+
+        /* --- ボタン類 --- */
+        .control-group {
+            display: flex; align-items: center; gap: 8px;
+            background-color: #2d3748; padding: 4px 8px;
+            border-radius: 4px; border: 1px solid #4a5568;
+        }
+        .btn-control {
+            background-color: #2b6cb0; color: white; border: none;
+            padding: 6px 12px; border-radius: 4px; cursor: pointer;
+            font-size: 0.8rem; transition: all 0.2s; white-space: nowrap;
+        }
+        .btn-control:hover { background-color: #3182ce; }
+        .btn-control:disabled { background-color: #4a5568; cursor: not-allowed; opacity: 0.7; }
+        .btn-danger { background-color: #9b2c2c; }
+        .btn-cloud { background-color: #d69e2e; color: #1a202c; font-weight: bold; }
+        .btn-cloud:hover { background-color: #ecc94b; }
+        .btn-ui-toggle { background-color: #718096; font-size: 1.1rem; padding: 2px 10px; }
+
+        .switch-label { font-size: 0.75rem; color: #cbd5e0; cursor: pointer; user-select: none; margin-left: 5px;}
+        .switch { position: relative; display: inline-block; width: 30px; height: 16px; vertical-align: middle; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #4a5568; transition: .4s; border-radius: 16px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 12px; width: 12px; left: 2px; bottom: 2px;
+            background-color: white; transition: .4s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: #48bb78; }
+        input:checked + .slider:before { transform: translateX(14px); }
+
+        #status-indicator { font-size: 0.75rem; color: #ecc94b; min-width: 50px; text-align: right; margin-right: 5px;}
+        #status-indicator.saved { color: #48bb78; }
+        #status-indicator.error { color: #f56565; }
+
+        /* --- キャンバス --- */
+        #canvas {
+            position: relative; flex-grow: 1; width: 100%; height: 100%; overflow: auto; 
+            transition: padding-bottom 0.3s; /* ドッキング時の余白調整用 */
+            padding-bottom: 200px;
+        }
+
+        /* --- ウィンドウ --- */
+
+        /* テキスト操作系ボタンをまとめるグループ */
+        .tools-text-group {
+            display: flex; gap: 4px; align-items: center;
+        }
+
+        /* ウィンドウがメディアモード（画像・動画表示中）の時、テキストツールを隠す */
+        .window.media-mode .tools-text-group {
+            display: none;
+        }
+
+        /* メディアモード時はメディア削除ボタンなどを右側に寄せるための調整 */
+        .window.media-mode .win-tools {
+            justify-content: flex-end;
+        }
+        .window {
+            position: absolute; background-color: #222630;
+            border: 1px solid #4a5568; border-radius: 6px;
+            display: flex; flex-direction: column;
+            width: 320px; height: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            resize: both; overflow: hidden;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            min-width: 150px; min-height: 150px; box-sizing: border-box; 
+        }
+        .window.active { border-color: #63b3ed; box-shadow: 0 15px 35px rgba(0,0,0,0.7); }
+        
+        /* ドッキング（固定）状態のスタイル */
+        .window.docked-bottom {
+            position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; top: auto !important;
+            width: 100% !important; 
+            z-index: 20000 !important;
+            border-radius: 0 !important; border-top: none; border-left: none; border-right: none; border-bottom: none;
+            resize: none !important; margin: 0 !important;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.3); /* 上向きの影を追加 */
+        }
+        /* --- ドッキング用ハンドル（不要になったので非表示） --- */
+        .dock-resize-handle {
+            display: none !important;
+        }
+        .window.docked-bottom .dock-resize-handle {
+            display: flex; /* ドッキング時のみ表示 */
+        }
+        .dock-resize-handle::after { content: ""; width: 50px; height: 4px; background-color: #718096; border-radius: 2px; }
+
+        .win-header {
+            padding: 2px 8px; /* 上下の余白を削減 (6px -> 2px) */
+            background-color: #2d3748; border-bottom: 1px solid #4a5568;
+            display: flex; align-items: center;
+            cursor: move; user-select: none; flex-shrink: 0; gap: 5px; 
+            height: 28px; /* 高さを削減 (36px -> 28px) */
+            box-sizing: border-box;
+        }
+        
+        .win-title-input {
+            width: 140px; flex-shrink: 0;
+            background: transparent; border: 1px solid transparent;
+            color: #e2e8f0; font-weight: bold; font-size: 0.85rem;
+            padding: 2px 4px; border-radius: 4px; 
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .win-title-input:hover { border-color: #4a5568; background-color: #2d3748; }
+        .win-title-input:focus { border-color: #63b3ed; background-color: #1a202c; outline: none; width: 180px; z-index: 10;}
+
+        .win-drag-area { flex-grow: 1; height: 100%; cursor: move; }
+
+        .btn-header-icon { background: none; border: none; color: #a0aec0; cursor: pointer; font-size: 1rem; padding: 0 4px; }
+        .btn-delete { color: #fc8181; font-size: 1.2rem; line-height: 1; border:none; background:none; cursor:pointer;}
+        
+        .win-body { flex-grow: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        
+        .win-tools { 
+            padding: 5px; background-color: #1a202c; display: flex; align-items: center; 
+            gap: 4px; flex-shrink: 0; border-bottom: 1px solid #2d3748; flex-wrap: wrap;
+            position: relative; z-index: 20;
+        }
+        textarea {
+            flex-grow: 1; width: 100%; background-color: #222630; color: #e2e8f0;
+            border: none; padding: 10px; resize: none; line-height: 1.7; outline: none; box-sizing: border-box; 
+        }
+        /* --- CodeMirror 5 エディタ用 --- */
+        .CodeMirror {
+            flex-grow: 1; width: 100%; height: auto; min-height: 0;
+            font-family: inherit;
+            background-color: transparent !important;
+            line-height: 1.7;
+        }
+        .CodeMirror-scroll {
+            padding: 10px;
+        }
+        .CodeMirror-vscrollbar, .CodeMirror-hscrollbar {
+            display: none !important; /* スクロールバーは.CodeMirror自体で制御するか非表示 */
+        }
+        
+        /* カスタムダークテーマ (workspace-dark) */
+        .cm-s-workspace-dark.CodeMirror { color: #e2e8f0; background-color: #222630; }
+        .cm-s-workspace-dark .CodeMirror-cursor { border-left: 2px solid #63b3ed; }
+        .cm-s-workspace-dark .CodeMirror-selected { background: rgba(99, 179, 237, 0.3); }
+        .cm-s-workspace-dark .CodeMirror-line::selection, .cm-s-workspace-dark .CodeMirror-line > span::selection, .cm-s-workspace-dark .CodeMirror-line > span > span::selection { background: rgba(99, 179, 237, 0.3); }
+        
+        /* マークダウンのハイライト */
+        .cm-s-workspace-dark .cm-header { font-weight: bold; color: #569cd6; }
+        .cm-s-workspace-dark .cm-header-1 { font-size: 1em; }
+        .cm-s-workspace-dark .cm-header-2 { font-size: 1em; }
+        .cm-s-workspace-dark .cm-header-3 { font-size: 1em; }
+        .cm-s-workspace-dark .cm-header-4 { font-size: 1em; }
+        .cm-s-workspace-dark .cm-header-5 { font-size: 1em; }
+        .cm-s-workspace-dark .cm-header-6 { font-size: 1em; }
+        .cm-s-workspace-dark .cm-strong { color: #569cd6; font-weight: bold; }
+        .cm-s-workspace-dark .cm-em { color: #569cd6; font-style: italic; }
+        .cm-s-workspace-dark .cm-link { color: #63b3ed; text-decoration: underline; }
+        .cm-s-workspace-dark .cm-url { color: #4a9bd9; }
+        .cm-s-workspace-dark .cm-quote { color: #a0aec0; font-style: italic; }
+        .cm-s-workspace-dark .cm-hr { color: #4a5568; }
+        .cm-s-workspace-dark .cm-comment { color: #6a9955; }
+        .cm-s-workspace-dark .cm-string { color: #68d391; }
+        .btn-tool { cursor: pointer; border: none; color: #e2e8f0; background-color: #4a5568; border-radius: 3px; padding: 4px 8px; font-size: 0.7rem; white-space: nowrap;}
+        .btn-tool:hover { background-color: #718096; }
+        .btn-font { font-family: monospace; font-weight: bold; width: 24px; padding: 4px 0; text-align: center; }
+        .btn-format { background-color: #553c9a; color: #e9d8fd; }
+        .btn-active { background-color: #3182ce; color: white; } /* アクティブ状態用 */
+
+        .mobile-resize-handle {
+            height: 12px; background-color: #2d3748; cursor: row-resize; flex-shrink: 0;
+            display: none; justify-content: center; align-items: center;
+            position: relative; z-index: 20;
+        }
+        .mobile-resize-handle::after { content: ""; width: 40px; height: 4px; background-color: #4a5568; border-radius: 2px; }
+        
+        .media-layer {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #000;
+            display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 10;
+        }
+        .media-layer.show { display: flex; }
+        .media-layer.hidden-media { display: none !important; } /* 強制非表示用 */
+        
+        .media-content { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .btn-close-media {
+            position: absolute; top: 10px; right: 10px; background-color: rgba(0,0,0,0.6);
+            color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 10px; cursor: pointer;
+            z-index: 30;
+        }
+
+        /* --- Minimal Mode (UI非表示) --- */
+        body.minimal-mode .win-tools { display: none !important; }
+        body.minimal-mode .win-title-input { display: none !important; }
+        body.minimal-mode .btn-header-icon { display: none !important; }
+        /* タイトルバー自体はドラッグ用に残すが目立たなくする */
+        body.minimal-mode .win-header { height: 10px; padding: 0; opacity: 0.2; transition: opacity 0.2s; }
+        body.minimal-mode .win-header:hover { opacity: 1; }
+        body.minimal-mode .win-header button.btn-delete { display: none; } /* 誤操作防止のため削除ボタンも消す */
+
+        /* --- モーダル (共通) --- */
+        .modal-overlay {
+            position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7);
+            z-index: 20000; display: none; justify-content: center; align-items: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-box {
+            background-color: #2d3748; border: 1px solid #4a5568; border-radius: 8px;
+            width: 90%; max-width: 400px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column; gap: 15px;
+        }
+        .modal-title { font-size: 1.2rem; font-weight: bold; color: #e2e8f0; margin: 0; border-bottom:1px solid #4a5568; padding-bottom:5px; }
+        .modal-body { display: flex; flex-direction: column; gap: 10px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px;}
+        
+        .board-list {
+            max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
+            background: #1a202c; padding: 10px; border-radius: 4px; min-height: 50px;
+        }
+        
+        .file-row {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #4a5568; padding: 10px; border-radius: 4px; margin-bottom: 6px;
+            transition: background 0.2s;
+        }
+        .file-row:hover { background-color: #2d3748; border: 1px solid #63b3ed; }
+        .file-name { 
+            font-weight: bold; color: #e2e8f0; flex-grow: 1; padding-right: 10px; 
+            cursor: pointer; display: flex; align-items: center; gap: 5px;
+        }
+        .file-actions { display: flex; gap: 8px; }
+        .btn-mini {
+            padding: 4px 10px; font-size: 0.75rem; border-radius: 3px; border: none; cursor: pointer; color: white;
+        }
+        .btn-load { background-color: #38a169; }
+        .btn-load:hover { background-color: #48bb78; }
+        .btn-trash { background-color: #e53e3e; }
+        .btn-trash:hover { background-color: #fc8181; }
+
+        .input-group { display: flex; gap: 5px; }
+        .input-text {
+            background: #1a202c; border: 1px solid #4a5568; color: white;
+            padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box;
+        }
+
+        .mobile-only { display: none; }
+        .pc-only { display: block; }
+
+        @media (max-width: 768px) {
+            h1 { display: none; }
+            header { gap: 8px; padding: 0 8px; }
+            .btn-control { padding: 6px 8px; font-size: 0.75rem; }
+            /* ドッキングしていないウィンドウは通常配置 */
+            #canvas { padding: 10px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px; overflow-y: auto; }
+            
+            .window:not(.docked-bottom) { 
+                position: relative !important; left: auto !important; top: auto !important; 
+                resize: none !important; margin-bottom: 0; z-index: 1 !important; flex-shrink: 0; 
+            }
+            .window.docked-bottom { z-index: 9999 !important; }
+            
+            .win-header { cursor: default; }
+            .mobile-resize-handle { display: flex; } 
+            .mobile-only { display: inline-block; }
+            .pc-only { display: none; }
+            /* スマホで1/2ボタンなどを確実に表示させるための調整 */
+            .win-tools { overflow-x: auto; }
+        }
