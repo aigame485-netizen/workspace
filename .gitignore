@@ -1,0 +1,21 @@
+# 画像・動画（うっかり防止）
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp
+*.mp4
+*.webm
+*.mov
+*.avi
+
+# Claude Code プロジェクト設定（非公開）
+CLAUDE.md
+
+# その他
+*.psd
+*.zip
+*.rar
+Thumbs.db
+.DS_Store
