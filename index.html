@@ -66,6 +66,17 @@
         <div class="modal-box" style="max-width: 450px;">
             <h3 class="modal-title">☁️ クラウド連携</h3>
             <div class="modal-body">
+                <div style="background:#1a202c; padding:10px; border-radius:4px; margin-bottom:10px; border:1px solid #4a5568;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <span style="font-size:0.9rem; color:#ecc94b;">🔐 E2E暗号化</span>
+                        <span id="encKeyStatus" style="font-size:0.75rem;">確認中...</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="password" id="encKeyInput" class="input-text" placeholder="暗号キーを入力..." style="flex:1;">
+                        <button class="btn-control" onclick="saveEncKey()" style="padding:6px 10px;">設定</button>
+                        <button class="btn-control btn-danger" onclick="removeEncKey()" style="padding:6px 10px;">解除</button>
+                    </div>
+                </div>
                 <div style="background:#2d3748; padding-bottom:15px; border-bottom:2px dashed #4a5568; margin-bottom:10px;">
                     <p style="margin:0 0 10px 0; font-size:0.9rem; color:#cbd5e0;">
                         現在のボード: <strong id="cloud-current-name" style="color:#63b3ed; font-size:1.1rem;">default</strong>

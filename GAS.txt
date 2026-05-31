@@ -1,0 +1,92 @@
+// ★★★ SECRET_KEY はスクリプトプロパティから取得 ★★★
+// GASエディタ → プロジェクトの設定 → スクリプトプロパティ で SECRET_KEY を設定すること
+const SECRET_KEY = PropertiesService.getScriptProperties().getProperty("SECRET_KEY");
+const FILE_PREFIX = "creative_board_";
+
+function doGet(e) { return handleRequest(e); }
+function doPost(e) { return handleRequest(e); }
+
+function handleRequest(e) {
+  const createJsonOutput = (data) => {
+    return ContentService.createTextOutput(JSON.stringify(data))
+      .setMimeType(ContentService.MimeType.JSON);
+  };
+
+  try {
+    if (!e || !e.parameter) return createJsonOutput({ status: "error", message: "No parameters" });
+
+    // 【セキュリティ対策】合言葉チェック + ウェイト
+    if (e.parameter.auth !== SECRET_KEY) {
+      Utilities.sleep(3000); // 失敗時は3秒待機（総当り防止）
+      return createJsonOutput({ status: "error", message: "合言葉が違います" });
+    }
+
+    const action = e.parameter.action;
+    
+    // ------------------------------------------
+    // アクション: 一覧取得 (list)
+    // ------------------------------------------
+    if (action === "list") {
+      const files = DriveApp.searchFiles(`title contains '${FILE_PREFIX}' and trashed = false`);
+      const boardNames = [];
+      while (files.hasNext()) {
+        const f = files.next();
+        const name = f.getName();
+        if (name.endsWith(".json")) {
+            boardNames.push(name.replace(FILE_PREFIX, "").replace(".json", ""));
+        }
+      }
+      const uniqueNames = [...new Set(boardNames)].sort();
+      return createJsonOutput({ status: "success", boards: uniqueNames });
+    }
+
+    // ------------------------------------------
+    // アクション: 削除 (delete) ★新規追加
+    // ------------------------------------------
+    if (action === "delete") {
+      const boardName = e.parameter.boardName;
+      if (!boardName) return createJsonOutput({ status: "error", message: "名前がありません" });
+      
+      const fileName = `${FILE_PREFIX}${boardName}.json`;
+      const files = DriveApp.getFilesByName(fileName);
+      
+      let count = 0;
+      while (files.hasNext()) {
+        const f = files.next();
+        f.setTrashed(true); // ゴミ箱へ移動
+        count++;
+      }
+      return createJsonOutput({ status: "success", deletedCount: count });
+    }
+
+    // ------------------------------------------
+    // 保存 (UP) / 読込 (DOWN)
+    // ------------------------------------------
+    const boardName = e.parameter.boardName || "default";
+    const fileName = `${FILE_PREFIX}${boardName}.json`;
+    const isDownload = (action === "download") || (!e.postData);
+
+    if (isDownload) {
+      // ダウンロード
+      const files = DriveApp.getFilesByName(fileName);
+      if (files.hasNext()) {
+        return ContentService.createTextOutput(files.next().getBlob().getDataAsString()).setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return createJsonOutput({ status: "error", message: "File not found" });
+      }
+    } else {
+      // アップロード
+      const dataContent = e.postData.contents; 
+      const files = DriveApp.getFilesByName(fileName);
+      if (files.hasNext()) {
+        files.next().setContent(dataContent); // 上書き
+      } else {
+        DriveApp.createFile(fileName, dataContent); // 新規作成
+      }
+      return createJsonOutput({ status: "success" });
+    }
+
+  } catch (error) {
+    return createJsonOutput({ status: "error", message: "Global Error: " + error.toString() });
+  }
+}

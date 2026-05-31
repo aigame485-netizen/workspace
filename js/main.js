@@ -131,6 +131,93 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             tx.objectStore(STORE_SETTINGS).delete('auth_password');
         }
 
+        // --- E2E暗号化 (AES-256-GCM + PBKDF2) ---
+        async function getEncryptionKey() {
+            return await getSetting('encryption_key');
+        }
+        async function setEncryptionKey(key) {
+            await setSetting('encryption_key', key);
+        }
+        async function clearEncryptionKey() {
+            const tx = db.transaction([STORE_SETTINGS], 'readwrite');
+            tx.objectStore(STORE_SETTINGS).delete('encryption_key');
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            for (let i = 0; i < bytes.length; i += 8192) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+            }
+            return btoa(binary);
+        }
+        function base64ToArrayBuffer(b64) {
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes;
+        }
+
+        async function deriveKey(passphrase, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+                keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptData(plaintext, passphrase) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const key = await deriveKey(passphrase, salt);
+            const ciphertext = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext)
+            );
+            return {
+                encrypted: true, v: 1,
+                salt: arrayBufferToBase64(salt),
+                iv: arrayBufferToBase64(iv),
+                data: arrayBufferToBase64(ciphertext)
+            };
+        }
+
+        async function decryptData(encObj, passphrase) {
+            const salt = base64ToArrayBuffer(encObj.salt);
+            const iv = base64ToArrayBuffer(encObj.iv);
+            const ciphertext = base64ToArrayBuffer(encObj.data);
+            const key = await deriveKey(passphrase, salt);
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv }, key, ciphertext
+            );
+            return new TextDecoder().decode(decrypted);
+        }
+
+        async function updateEncKeyStatus() {
+            const key = await getEncryptionKey();
+            const el = document.getElementById('encKeyStatus');
+            if (el) {
+                el.textContent = key ? '🔒 暗号化有効' : '🔓 暗号化無効（平文保存）';
+                el.style.color = key ? '#48bb78' : '#f6ad55';
+            }
+        }
+        async function saveEncKey() {
+            const input = document.getElementById('encKeyInput');
+            const key = input.value.trim();
+            if (!key) return alert('暗号キーを入力してください');
+            if (key.length < 4) return alert('4文字以上で設定してください');
+            await setEncryptionKey(key);
+            updateEncKeyStatus();
+            alert('暗号キーを設定しました。\nアップロード時にデータが暗号化されます。');
+        }
+        async function removeEncKey() {
+            if (!confirm('暗号キーを解除しますか？\n（暗号化済みデータの読込には再設定が必要です）')) return;
+            await clearEncryptionKey();
+            updateEncKeyStatus();
+        }
+
         function updateBoardDisplay() {
             const cloudNameEl = document.getElementById('cloud-current-name');
             if (cloudNameEl) cloudNameEl.textContent = boardNames[currentTabId];
@@ -143,6 +230,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             document.getElementById('cloudModal').classList.add('show');
             updateBoardDisplay();
             document.getElementById('newBoardInput').value = "";
+            updateEncKeyStatus();
             refreshBoardList();
         }
         async function refreshBoardList() {
@@ -213,8 +301,15 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                         text: r.text, hasMedia: r.hasMedia, mediaType: r.mediaType, mediaBase64: b64
                     });
                 }
+                let sendBody = JSON.stringify(exportData);
+                const encKey = await getEncryptionKey();
+                if (encKey) {
+                    updateStatus("暗号化中...", false);
+                    const encObj = await encryptData(sendBody, encKey);
+                    sendBody = JSON.stringify(encObj);
+                }
                 const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&boardName=${encodeURIComponent(boardName)}`;
-                const res = await fetch(url, { method: 'POST', body: JSON.stringify(exportData) });
+                const res = await fetch(url, { method: 'POST', body: sendBody });
                 const json = await res.json();
                 
                 if(json.status === 'success') { 
@@ -252,7 +347,19 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 try { importData = JSON.parse(text); } catch(e) { throw new Error("JSON Parse Error"); }
                 if (importData.status === 'error') throw new Error(importData.message);
 
-                await clearAllData(true); 
+                if (importData.encrypted) {
+                    const encKey = await getEncryptionKey();
+                    if (!encKey) throw new Error('暗号化データです。暗号キーを設定してから再試行してください。');
+                    updateStatus("復号中...", false);
+                    try {
+                        const decryptedStr = await decryptData(importData, encKey);
+                        importData = JSON.parse(decryptedStr);
+                    } catch(decErr) {
+                        throw new Error('復号失敗: 暗号キーが正しいか確認してください。');
+                    }
+                }
+
+                await clearAllData(true);
 
                 const savePromises = [];
                 const activeStore = getActiveStore();
