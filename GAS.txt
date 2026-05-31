@@ -2,6 +2,22 @@
 // GASエディタ → プロジェクトの設定 → スクリプトプロパティ で SECRET_KEY を設定すること
 const SECRET_KEY = PropertiesService.getScriptProperties().getProperty("SECRET_KEY");
 const FILE_PREFIX = "creative_board_";
+const CLI_FILE_PREFIX = "cli_file_";
+const CLI_MEMO_PREFIX = "cli_memo_";
+
+// CLIファイル用ヘルパー: パス → Driveファイル名
+function pathToFileName(prefix, path) {
+  const ext = (prefix === CLI_FILE_PREFIX) ? ".txt" : ".json";
+  return prefix + path.replace(/\//g, "__") + ext;
+}
+
+// CLIファイル用ヘルパー: Driveファイル名 → パス
+function fileNameToPath(prefix, fileName) {
+  let stripped = fileName.replace(prefix, "");
+  if (fileName.startsWith(CLI_FILE_PREFIX)) stripped = stripped.replace(/\.txt$/, "");
+  else stripped = stripped.replace(/\.json$/, "");
+  return stripped.replace(/__/g, "/");
+}
 
 function doGet(e) { return handleRequest(e); }
 function doPost(e) { return handleRequest(e); }
@@ -59,9 +75,190 @@ function handleRequest(e) {
       return createJsonOutput({ status: "success", deletedCount: count });
     }
 
+    // ==============================================
+    // CLI連携アクション群
+    // ==============================================
+
     // ------------------------------------------
-    // 保存 (UP) / 読込 (DOWN)
+    // CLI: ファイルアップロード (cli_upload)
     // ------------------------------------------
+    if (action === "cli_upload") {
+      const path = e.parameter.path;
+      if (!path) return createJsonOutput({ status: "error", message: "pathが必要です" });
+
+      const fileName = pathToFileName(CLI_FILE_PREFIX, path);
+      const dataContent = e.postData ? e.postData.contents : "";
+      const meta = JSON.stringify({ path: path, updatedAt: new Date().toISOString() });
+
+      const files = DriveApp.getFilesByName(fileName);
+      if (files.hasNext()) {
+        const f = files.next();
+        f.setContent(dataContent);
+        f.setDescription(meta);
+      } else {
+        const f = DriveApp.createFile(fileName, dataContent);
+        f.setDescription(meta);
+      }
+      return createJsonOutput({ status: "success", path: path });
+    }
+
+    // ------------------------------------------
+    // CLI: ファイル一覧取得 (cli_list)
+    // ------------------------------------------
+    if (action === "cli_list") {
+      const files = DriveApp.searchFiles("title contains '" + CLI_FILE_PREFIX + "' and trashed = false");
+      const fileList = [];
+      while (files.hasNext()) {
+        const f = files.next();
+        const name = f.getName();
+        if (!name.startsWith(CLI_FILE_PREFIX)) continue;
+        const path = fileNameToPath(CLI_FILE_PREFIX, name);
+        fileList.push({
+          path: path,
+          updatedAt: f.getLastUpdated().toISOString(),
+          size: f.getSize()
+        });
+      }
+      fileList.sort((a, b) => a.path.localeCompare(b.path));
+      return createJsonOutput({ status: "success", files: fileList });
+    }
+
+    // ------------------------------------------
+    // CLI: ファイルダウンロード (cli_download)
+    // ------------------------------------------
+    if (action === "cli_download") {
+      const path = e.parameter.path;
+      if (!path) return createJsonOutput({ status: "error", message: "pathが必要です" });
+
+      const fileName = pathToFileName(CLI_FILE_PREFIX, path);
+      const files = DriveApp.getFilesByName(fileName);
+      if (files.hasNext()) {
+        const f = files.next();
+        const content = f.getBlob().getDataAsString();
+        return createJsonOutput({
+          status: "success",
+          path: path,
+          content: content,
+          updatedAt: f.getLastUpdated().toISOString()
+        });
+      } else {
+        return createJsonOutput({ status: "error", message: "File not found: " + path });
+      }
+    }
+
+    // ------------------------------------------
+    // CLI: ファイル削除 (cli_delete)
+    // ------------------------------------------
+    if (action === "cli_delete") {
+      const path = e.parameter.path;
+      if (!path) return createJsonOutput({ status: "error", message: "pathが必要です" });
+
+      let count = 0;
+      if (path === "*") {
+        const files = DriveApp.searchFiles("title contains '" + CLI_FILE_PREFIX + "' and trashed = false");
+        while (files.hasNext()) {
+          files.next().setTrashed(true);
+          count++;
+        }
+      } else {
+        const fileName = pathToFileName(CLI_FILE_PREFIX, path);
+        const files = DriveApp.getFilesByName(fileName);
+        while (files.hasNext()) {
+          files.next().setTrashed(true);
+          count++;
+        }
+      }
+      return createJsonOutput({ status: "success", deletedCount: count });
+    }
+
+    // ------------------------------------------
+    // CLI: メモ保存 (cli_memo_save)
+    // ------------------------------------------
+    if (action === "cli_memo_save") {
+      if (!e.postData) return createJsonOutput({ status: "error", message: "POSTデータが必要です" });
+
+      const memoInput = JSON.parse(e.postData.contents);
+      const targetFile = memoInput.targetFile;
+      if (!targetFile) return createJsonOutput({ status: "error", message: "targetFileが必要です" });
+
+      const memo = memoInput.memo;
+      memo.id = new Date().getTime().toString(36) + Math.random().toString(36).substr(2, 4);
+      memo.createdAt = new Date().toISOString();
+
+      const memoFileName = pathToFileName(CLI_MEMO_PREFIX, targetFile);
+      const files = DriveApp.getFilesByName(memoFileName);
+
+      let memoData;
+      if (files.hasNext()) {
+        const f = files.next();
+        memoData = JSON.parse(f.getBlob().getDataAsString());
+        memoData.memos.push(memo);
+        f.setContent(JSON.stringify(memoData));
+      } else {
+        memoData = { targetFile: targetFile, memos: [memo] };
+        DriveApp.createFile(memoFileName, JSON.stringify(memoData));
+      }
+      return createJsonOutput({ status: "success", memoId: memo.id, totalMemos: memoData.memos.length });
+    }
+
+    // ------------------------------------------
+    // CLI: メモ一覧取得 (cli_memo_list)
+    // ------------------------------------------
+    if (action === "cli_memo_list") {
+      const path = e.parameter.path;
+
+      if (path) {
+        const memoFileName = pathToFileName(CLI_MEMO_PREFIX, path);
+        const files = DriveApp.getFilesByName(memoFileName);
+        if (files.hasNext()) {
+          const memoData = JSON.parse(files.next().getBlob().getDataAsString());
+          return createJsonOutput({ status: "success", targetFile: path, memos: memoData.memos });
+        } else {
+          return createJsonOutput({ status: "success", targetFile: path, memos: [] });
+        }
+      } else {
+        const files = DriveApp.searchFiles("title contains '" + CLI_MEMO_PREFIX + "' and trashed = false");
+        const allMemos = [];
+        while (files.hasNext()) {
+          const f = files.next();
+          try {
+            const memoData = JSON.parse(f.getBlob().getDataAsString());
+            allMemos.push(memoData);
+          } catch(err) {}
+        }
+        return createJsonOutput({ status: "success", memoFiles: allMemos });
+      }
+    }
+
+    // ------------------------------------------
+    // CLI: メモ削除 (cli_memo_delete)
+    // ------------------------------------------
+    if (action === "cli_memo_delete") {
+      const path = e.parameter.path;
+      if (!path) return createJsonOutput({ status: "error", message: "pathが必要です" });
+
+      const memoId = e.parameter.memoId;
+      const memoFileName = pathToFileName(CLI_MEMO_PREFIX, path);
+      const files = DriveApp.getFilesByName(memoFileName);
+
+      if (!files.hasNext()) return createJsonOutput({ status: "success", deletedCount: 0 });
+
+      const f = files.next();
+      if (memoId === "*") {
+        f.setTrashed(true);
+        return createJsonOutput({ status: "success", deletedCount: 1 });
+      } else {
+        const memoData = JSON.parse(f.getBlob().getDataAsString());
+        const before = memoData.memos.length;
+        memoData.memos = memoData.memos.filter(m => m.id !== memoId);
+        f.setContent(JSON.stringify(memoData));
+        return createJsonOutput({ status: "success", deletedCount: before - memoData.memos.length });
+      }
+    }
+
+    // ==============================================
+    // 既存Canvas機能: 保存 (UP) / 読込 (DOWN)
+    // ==============================================
     const boardName = e.parameter.boardName || "default";
     const fileName = `${FILE_PREFIX}${boardName}.json`;
     const isDownload = (action === "download") || (!e.postData);

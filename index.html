@@ -54,12 +54,61 @@
         <button class="btn-control" id="btn-manual-save" onclick="manualSaveAll()">💾</button>
         <button class="btn-control" onclick="createNewWindow()">＋</button>
         <button class="btn-control btn-danger" onclick="clearAllData()">🗑️</button>
-        
+        <button class="btn-control btn-cli" onclick="toggleCliViewer()">📡</button>
+
         <div style="width:10px;"></div>
 
     </header>
 
     <div id="canvas"></div>
+
+    <!-- CLI Viewer -->
+    <div id="cli-viewer" style="display:none;">
+        <div class="cli-topbar">
+            <button class="cli-btn-menu" onclick="toggleCliSidebar()">☰</button>
+            <span class="cli-current-file" id="cli-current-filename">ファイルを選択</span>
+            <div style="flex-grow:1;"></div>
+            <button class="btn-tool btn-font" onclick="cliChangeFontSize(-2)">A-</button>
+            <button class="btn-tool btn-font" onclick="cliChangeFontSize(2)">A+</button>
+            <button class="btn-tool" onclick="cliRefreshFiles()">🔄</button>
+            <button class="btn-control" onclick="toggleCliViewer()">✕ 戻る</button>
+        </div>
+
+        <div class="cli-sidebar" id="cli-sidebar">
+            <div class="cli-sidebar-header">
+                <span>📁 CLIファイル</span>
+                <button class="btn-tool" onclick="toggleCliSidebar()">✕</button>
+            </div>
+            <div class="cli-file-tree" id="cli-file-tree">
+                <div style="text-align:center; color:#718096; padding:20px;">📡 CLIボタンで開始</div>
+            </div>
+            <div class="cli-sidebar-footer">
+                <button class="btn-control btn-danger" onclick="cliDeleteAllFiles()" style="width:100%; padding:8px;">🗑️ 全ファイル削除</button>
+            </div>
+        </div>
+        <div class="cli-sidebar-overlay" id="cli-sidebar-overlay" onclick="toggleCliSidebar()"></div>
+
+        <div class="cli-main">
+            <div class="cli-viewer-area" id="cli-viewer-area">
+                <textarea id="cli-viewer-textarea" style="display:none;"></textarea>
+            </div>
+
+            <div class="cli-memo-area" id="cli-memo-area">
+                <div class="cli-memo-header" onclick="toggleCliMemoExpand()">
+                    <span>📝 メモ / フィードバック</span>
+                    <button class="btn-tool" id="cli-memo-toggle">▲</button>
+                </div>
+                <div class="cli-memo-body" id="cli-memo-body">
+                    <input type="text" class="input-text" id="cli-memo-section" placeholder="セクション名（任意）">
+                    <textarea id="cli-memo-content" class="input-text" rows="3" placeholder="修正指示やメモを入力..."></textarea>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn-control btn-cloud" onclick="cliSendMemo()" style="flex:1;">📤 メモを送信</button>
+                        <button class="btn-tool" onclick="cliShowMemoHistory()" title="送信済みメモ">📋</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- クラウドモーダル -->
     <div id="cloudModal" class="modal-overlay" onclick="if(event.target===this) closeModal('cloudModal')">
@@ -115,5 +164,8 @@
     
     <!-- CodeMirror初期化 -->
     <script src="js/cm-init.js"></script>
+
+    <!-- CLI Viewer -->
+    <script src="js/cli-viewer.js"></script>
 </body>
 </html>

@@ -305,17 +305,148 @@
             .btn-control { padding: 6px 8px; font-size: 0.75rem; }
             /* ドッキングしていないウィンドウは通常配置 */
             #canvas { padding: 10px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px; overflow-y: auto; }
-            
-            .window:not(.docked-bottom) { 
-                position: relative !important; left: auto !important; top: auto !important; 
-                resize: none !important; margin-bottom: 0; z-index: 1 !important; flex-shrink: 0; 
+
+            .window:not(.docked-bottom) {
+                position: relative !important; left: auto !important; top: auto !important;
+                resize: none !important; margin-bottom: 0; z-index: 1 !important; flex-shrink: 0;
             }
             .window.docked-bottom { z-index: 9999 !important; }
-            
+
             .win-header { cursor: default; }
-            .mobile-resize-handle { display: flex; } 
+            .mobile-resize-handle { display: flex; }
             .mobile-only { display: inline-block; }
             .pc-only { display: none; }
             /* スマホで1/2ボタンなどを確実に表示させるための調整 */
             .win-tools { overflow-x: auto; }
         }
+
+        /* =========================================
+           CLI Viewer
+           ========================================= */
+
+        /* CLIボタン */
+        .btn-cli { background-color: #553c9a; color: #e9d8fd; }
+        .btn-cli:hover { background-color: #6b46c1; }
+        .btn-cli.active { background-color: #6b46c1; box-shadow: 0 0 8px rgba(107,70,193,0.5); }
+
+        /* CLI Viewer 全体 */
+        #cli-viewer {
+            flex-grow: 1; display: flex; flex-direction: column;
+            width: 100%; overflow: hidden;
+            background-color: #1a202c;
+        }
+
+        /* 上部バー */
+        .cli-topbar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 10px; background-color: #171923;
+            border-bottom: 1px solid #4a5568; flex-shrink: 0;
+            height: 40px;
+        }
+        .cli-current-file {
+            font-size: 0.9rem; color: #63b3ed; font-weight: bold;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            max-width: 50vw;
+        }
+        .cli-btn-menu {
+            background: none; border: 1px solid #4a5568; color: #e2e8f0;
+            font-size: 1.2rem; padding: 4px 10px; border-radius: 4px; cursor: pointer;
+        }
+        .cli-btn-menu:hover { background-color: #4a5568; }
+
+        /* サイドバー（左スライドイン） */
+        .cli-sidebar {
+            position: fixed; top: 50px; left: 0; bottom: 0; width: 280px;
+            background-color: #2d3748; border-right: 1px solid #4a5568;
+            z-index: 15000; transform: translateX(-100%);
+            transition: transform 0.3s ease; overflow-y: auto;
+            display: flex; flex-direction: column;
+        }
+        .cli-sidebar.open { transform: translateX(0); }
+        .cli-sidebar-overlay {
+            position: fixed; top: 50px; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 14999;
+            display: none;
+        }
+        .cli-sidebar-overlay.show { display: block; }
+        .cli-sidebar-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 15px; border-bottom: 1px solid #4a5568;
+            color: #e2e8f0; font-weight: bold; flex-shrink: 0;
+        }
+        .cli-sidebar-footer {
+            padding: 10px 15px; border-top: 1px solid #4a5568;
+            flex-shrink: 0;
+        }
+
+        /* ファイルツリー */
+        .cli-file-tree { padding: 10px; flex-grow: 1; overflow-y: auto; }
+        .cli-folder { margin-bottom: 5px; }
+        .cli-folder-header {
+            display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+            color: #ecc94b; cursor: pointer; font-size: 0.85rem; font-weight: bold;
+            border-radius: 4px;
+        }
+        .cli-folder-header:hover { background-color: #4a5568; }
+        .cli-folder-files { padding-left: 15px; display: none; }
+        .cli-folder.open .cli-folder-files { display: block; }
+        .cli-file-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 10px; margin: 2px 0; border-radius: 4px; cursor: pointer;
+            color: #e2e8f0; font-size: 0.85rem;
+        }
+        .cli-file-item:hover { background-color: #4a5568; }
+        .cli-file-item.selected { background-color: #2b6cb0; }
+        .cli-file-delete {
+            background: none; border: none; color: #fc8181; cursor: pointer;
+            font-size: 0.9rem; padding: 2px 6px; opacity: 0.6;
+        }
+        .cli-file-delete:hover { opacity: 1; }
+
+        /* メインエリア */
+        .cli-main {
+            flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .cli-viewer-area {
+            flex-grow: 1; overflow: hidden; position: relative;
+        }
+        .cli-viewer-area .CodeMirror {
+            height: 100% !important;
+        }
+
+        /* メモエリア */
+        .cli-memo-area {
+            flex-shrink: 0; background-color: #171923;
+            border-top: 2px solid #4a5568;
+        }
+        .cli-memo-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px; cursor: pointer; color: #cbd5e0; font-size: 0.85rem;
+        }
+        .cli-memo-header:hover { background-color: #2d3748; }
+        .cli-memo-body {
+            padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+        }
+        .cli-memo-body.collapsed { display: none; }
+        #cli-memo-content {
+            resize: vertical; min-height: 60px; max-height: 200px;
+            line-height: 1.5;
+        }
+
+        /* 更新バッジ */
+        .cli-update-badge {
+            display: inline-block; width: 8px; height: 8px;
+            background-color: #f56565; border-radius: 50%;
+            margin-left: 5px; animation: cli-pulse 1.5s infinite;
+        }
+        @keyframes cli-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* CLI Viewer内の空状態 */
+        .cli-empty-state {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; color: #718096; font-size: 0.9rem; gap: 10px;
+        }
+        .cli-empty-state-icon { font-size: 3rem; opacity: 0.5; }

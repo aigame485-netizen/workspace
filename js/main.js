@@ -19,12 +19,13 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             }
         }
 
-        const DB_NAME = 'CreativeWorkspaceDB_v7'; 
-        const DB_VERSION = 4;
+        const DB_NAME = 'CreativeWorkspaceDB_v7';
+        const DB_VERSION = 5;
         const STORE_WINDOWS = 'windows';
         const STORE_WINDOWS_2 = 'windows_2';
         const STORE_WINDOWS_3 = 'windows_3';
         const STORE_SETTINGS = 'settings';
+        const STORE_CLI_CACHE = 'cli_files_cache';
 
         let db = null;
         let zIndexCounter = 100;
@@ -416,6 +417,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                     if (!d.objectStoreNames.contains(STORE_WINDOWS_2)) d.createObjectStore(STORE_WINDOWS_2, { keyPath: 'id' });
                     if (!d.objectStoreNames.contains(STORE_WINDOWS_3)) d.createObjectStore(STORE_WINDOWS_3, { keyPath: 'id' });
                     if (!d.objectStoreNames.contains(STORE_SETTINGS)) d.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
+                    if (!d.objectStoreNames.contains(STORE_CLI_CACHE)) d.createObjectStore(STORE_CLI_CACHE, { keyPath: 'path' });
                 };
                 r.onsuccess = (e) => { db = e.target.result; resolve(db); };
                 r.onerror = (e) => reject(e);
