@@ -485,7 +485,28 @@ async function cliShowMemoHistory() {
                 return;
             }
 
-            let display = memos.map((m, i) => {
+            // 暗号化メモの復号処理
+            const encKey = await getEncryptionKey();
+            const processed = [];
+            for (const m of memos) {
+                if (m.encrypted && m.payload) {
+                    if (encKey) {
+                        try {
+                            const decrypted = await decryptData(m.payload, encKey);
+                            const parsed = JSON.parse(decrypted);
+                            processed.push({ ...parsed.memo, id: m.id, createdAt: m.createdAt });
+                        } catch (_e) {
+                            processed.push({ content: '[復号失敗]', createdAt: m.createdAt });
+                        }
+                    } else {
+                        processed.push({ content: '[暗号化データ — キー未設定]', createdAt: m.createdAt });
+                    }
+                } else {
+                    processed.push(m);
+                }
+            }
+
+            let display = processed.map((m, i) => {
                 const sec = m.section ? `[${m.section}]` : '';
                 const line = m.lineHint ? `L${m.lineHint}` : '';
                 const date = m.createdAt ? new Date(m.createdAt).toLocaleString('ja-JP') : '';

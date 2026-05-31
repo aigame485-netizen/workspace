@@ -181,7 +181,13 @@ function handleRequest(e) {
       const targetFile = memoInput.targetFile;
       if (!targetFile) return createJsonOutput({ status: "error", message: "targetFileが必要です" });
 
-      const memo = memoInput.memo;
+      // 暗号化メモの場合、.memoは存在しない（ペイロード内に暗号化されている）
+      let memo;
+      if (memoInput.encrypted) {
+        memo = { encrypted: true, payload: memoInput.payload };
+      } else {
+        memo = memoInput.memo;
+      }
       memo.id = new Date().getTime().toString(36) + Math.random().toString(36).substr(2, 4);
       memo.createdAt = new Date().toISOString();
 
