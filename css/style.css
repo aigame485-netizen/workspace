@@ -466,3 +466,50 @@
             height: 100%; color: #718096; font-size: 0.9rem; gap: 10px;
         }
         .cli-empty-state-icon { font-size: 3rem; opacity: 0.5; }
+
+        /* =========================================
+           CLI Viewer - 編集モード
+           ========================================= */
+
+        /* 編集ボタン */
+        .btn-edit { background-color: #2b6cb0; color: white; }
+        .btn-edit:hover { background-color: #3182ce; }
+        .btn-edit.btn-active { background-color: #dd6b20; color: white; }
+
+        /* 保存ボタン */
+        .btn-save { background-color: #38a169; color: white; font-weight: bold; }
+        .btn-save:hover { background-color: #48bb78; }
+        .btn-save:disabled { background-color: #4a5568; color: #a0aec0; cursor: not-allowed; }
+
+        /* 保存ボタンのパルスアニメーション（未保存変更あり） */
+        .cli-save-pulse {
+            animation: cliSavePulse 1.2s infinite;
+        }
+        @keyframes cliSavePulse {
+            0%, 100% { background-color: #38a169; }
+            50% { background-color: #68d391; box-shadow: 0 0 8px rgba(72, 187, 120, 0.5); }
+        }
+
+        /* 編集モード時のビジュアルフィードバック */
+        #cli-viewer.cli-edit-mode .cli-topbar {
+            border-bottom: 2px solid #dd6b20;
+        }
+        #cli-viewer.cli-edit-mode .cli-viewer-area {
+            border: 1px solid rgba(221, 107, 32, 0.3);
+        }
+        #cli-viewer.cli-edit-mode .cli-viewer-area .CodeMirror {
+            background-color: #1a202c !important;
+        }
+
+        /* 保存完了トースト通知 */
+        .cli-save-toast {
+            position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, #38a169, #2f855a);
+            color: white; padding: 12px 24px; border-radius: 8px;
+            font-size: 0.9rem; font-weight: bold; z-index: 20000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: bottom 0.3s ease;
+            white-space: nowrap;
+        }
+        .cli-save-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+

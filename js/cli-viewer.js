@@ -11,6 +11,9 @@ let cliCurrentFile = null;
 let cliFileList = [];
 let cliFontSize = 14;
 let cliMemoExpanded = true;
+let cliEditMode = false;           // 編集モードON/OFF
+let cliOriginalContent = '';       // 編集前の元テキスト（変更検知用）
+let cliHasUnsavedChanges = false;  // 未保存の変更があるか
 
 // =========================================
 // モード切替
@@ -36,6 +39,12 @@ function toggleCliViewer() {
         cliBtn.classList.add('active');
         initCliViewer();
     } else {
+        // 未保存変更の確認
+        if (cliHasUnsavedChanges) {
+            if (!confirm('未保存の変更があります。破棄して戻りますか？')) return;
+        }
+        // 編集モードを解除
+        if (cliEditMode) cliExitEditMode();
         canvas.style.display = '';
         // ヘッダー要素を復元
         Array.from(header.children).forEach(el => {
@@ -277,6 +286,9 @@ async function cliOpenFile(path) {
             }
 
             cliEditorInstance.setValue(content);
+            cliOriginalContent = content; // 元テキストを記録
+            cliHasUnsavedChanges = false;
+            cliUpdateEditButtons();
             await cliSaveFileToCache(path, content, json.updatedAt);
             updateStatus('取得完了', true);
         } else {
@@ -668,4 +680,177 @@ function showLongPressFeedback(x, y, text) {
     setTimeout(() => indicator.remove(), 1500);
 }
 
-console.log("✅ CLI Viewer モジュール読み込み完了");
+// =========================================
+// 編集モード制御
+// =========================================
+
+/**
+ * 編集モードのON/OFF切替
+ * ONにするとCodeMirrorが編集可能になり、保存ボタンが現れる
+ */
+function toggleCliEditMode() {
+    if (!cliCurrentFile) {
+        alert('先にファイルを開いてください');
+        return;
+    }
+    if (cliEditMode) {
+        // 編集モード終了
+        if (cliHasUnsavedChanges) {
+            if (!confirm('未保存の変更があります。破棄しますか？')) return;
+        }
+        cliExitEditMode();
+    } else {
+        // 編集モード開始
+        cliEnterEditMode();
+    }
+}
+
+function cliEnterEditMode() {
+    cliEditMode = true;
+    cliOriginalContent = cliEditorInstance.getValue();
+    cliHasUnsavedChanges = false;
+
+    // CodeMirrorを編集可能にする
+    cliEditorInstance.setOption('readOnly', false);
+
+    // 変更検知リスナーを追加
+    cliEditorInstance.on('change', cliOnEditorChange);
+
+    // ビジュアルフィードバック
+    document.getElementById('cli-viewer').classList.add('cli-edit-mode');
+    cliUpdateEditButtons();
+    updateStatus('✏️ 編集モード', true);
+
+    // カーソルをエディタに合わせる
+    cliEditorInstance.focus();
+}
+
+function cliExitEditMode() {
+    cliEditMode = false;
+    cliHasUnsavedChanges = false;
+
+    // CodeMirrorをreadOnlyに戻す
+    cliEditorInstance.setOption('readOnly', true);
+
+    // 変更検知リスナーを解除
+    cliEditorInstance.off('change', cliOnEditorChange);
+
+    // ビジュアルフィードバック
+    document.getElementById('cli-viewer').classList.remove('cli-edit-mode');
+    cliUpdateEditButtons();
+    updateStatus('Ready', true);
+}
+
+function cliOnEditorChange() {
+    // 元テキストと現在のテキストを比較して変更を検知
+    const currentText = cliEditorInstance.getValue();
+    cliHasUnsavedChanges = (currentText !== cliOriginalContent);
+    cliUpdateEditButtons();
+}
+
+/**
+ * 編集ボタン・保存ボタンの表示状態を更新
+ */
+function cliUpdateEditButtons() {
+    const editBtn = document.getElementById('cli-btn-edit');
+    const saveBtn = document.getElementById('cli-btn-save');
+    if (!editBtn || !saveBtn) return;
+
+    if (cliEditMode) {
+        editBtn.textContent = '📖 閲覧';
+        editBtn.classList.add('btn-active');
+        saveBtn.style.display = 'inline-block';
+        saveBtn.disabled = !cliHasUnsavedChanges;
+        // 未保存がある場合は保存ボタンを強調
+        if (cliHasUnsavedChanges) {
+            saveBtn.classList.add('cli-save-pulse');
+        } else {
+            saveBtn.classList.remove('cli-save-pulse');
+        }
+    } else {
+        editBtn.textContent = '📝 編集';
+        editBtn.classList.remove('btn-active');
+        saveBtn.style.display = 'none';
+    }
+}
+
+/**
+ * 編集したファイルをGASに保存（暗号化→cli_upload）
+ */
+async function cliSaveFile() {
+    if (!cliCurrentFile) return;
+    if (!cliEditMode) return;
+
+    const content = cliEditorInstance.getValue();
+
+    // 内容に変更がなければスキップ
+    if (content === cliOriginalContent) {
+        alert('変更がありません');
+        return;
+    }
+
+    const pass = await getAuthPassword();
+    if (!pass) return;
+
+    // 暗号化処理
+    let body = content;
+    const encKey = await getEncryptionKey();
+    if (encKey) {
+        try {
+            const encObj = await encryptData(content, encKey);
+            body = JSON.stringify({ encrypted: true, ...encObj });
+        } catch (encErr) {
+            alert('暗号化に失敗しました: ' + encErr.message);
+            return;
+        }
+    }
+
+    try {
+        updateStatus('💾 保存中...', false);
+        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_upload&path=${encodeURIComponent(cliCurrentFile)}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            body: body
+        });
+        const json = await res.json();
+
+        if (json.status === 'success') {
+            // 成功: 元テキストを更新して変更フラグをクリア
+            cliOriginalContent = content;
+            cliHasUnsavedChanges = false;
+            cliUpdateEditButtons();
+
+            // キャッシュも更新
+            await cliSaveFileToCache(cliCurrentFile, content, new Date().toISOString());
+
+            updateStatus('✅ 保存完了', true);
+            showCliSaveToast();
+        } else {
+            throw new Error(json.message);
+        }
+    } catch (e) {
+        alert('保存失敗: ' + e.message);
+        updateStatus('保存失敗', false, true);
+    }
+}
+
+/**
+ * 保存完了トースト通知
+ */
+function showCliSaveToast() {
+    const existing = document.querySelector('.cli-save-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'cli-save-toast';
+    toast.textContent = '✅ 保存しました — CLIから pull で取得できます';
+    document.body.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+console.log("✅ CLI Viewer モジュール読み込み完了（編集モード対応）");
