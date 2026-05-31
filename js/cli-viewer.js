@@ -69,6 +69,9 @@ async function initCliViewer() {
         cliEditorInstance.getWrapperElement().style.fontFamily =
             "'Helvetica Neue', Arial, 'Hiragino Sans', 'Meiryo', sans-serif";
         setTimeout(() => cliEditorInstance.refresh(), 100);
+
+        // 長押しでメモにライン情報を送る
+        setupLongPress(cliEditorInstance);
     }
 
     // キャッシュから即表示 → 裏でサーバーから更新
@@ -388,6 +391,13 @@ function toggleCliMemoExpand() {
         body.classList.add('collapsed');
         btn.textContent = '▼';
     }
+
+    // CodeMirrorのサイズを再計算
+    if (cliEditorInstance) setTimeout(() => cliEditorInstance.refresh(), 100);
+}
+
+function expandCliMemo() {
+    if (!cliMemoExpanded) toggleCliMemoExpand();
 }
 
 async function cliSendMemo() {
@@ -554,6 +564,87 @@ async function cliSaveFileListToCache(files) {
     try {
         await setSetting('cli_file_list_cache', JSON.stringify(files));
     } catch (e) { /* 無視 */ }
+}
+
+// =========================================
+// 長押しでメモにライン情報を送る
+// =========================================
+
+let cliLongPressTimer = null;
+let cliLongPressFired = false;
+
+function setupLongPress(editor) {
+    const wrapper = editor.getWrapperElement();
+
+    wrapper.addEventListener('touchstart', (e) => {
+        cliLongPressFired = false;
+        const touch = e.touches[0];
+        const touchX = touch.clientX;
+        const touchY = touch.clientY;
+
+        cliLongPressTimer = setTimeout(() => {
+            cliLongPressFired = true;
+            // タッチ位置からCodeMirrorの行番号を取得
+            const coords = editor.coordsChar({ left: touchX, top: touchY });
+            const line = coords.line;
+            const lineNum = line + 1;
+
+            // 上方向に最も近い見出し（# で始まる行）を検索
+            let sectionName = '';
+            for (let i = line; i >= 0; i--) {
+                const lineText = editor.getLine(i);
+                if (lineText && /^#{1,4}\s+/.test(lineText)) {
+                    sectionName = lineText.replace(/^#+\s*/, '').trim();
+                    break;
+                }
+            }
+
+            // メモ欄にライン情報をセット
+            document.getElementById('cli-memo-section').value = sectionName;
+            expandCliMemo();
+
+            // フィードバック表示
+            showLongPressFeedback(touchX, touchY, `L${lineNum}: ${sectionName || '(セクションなし)'}`);
+
+            // メモ入力欄にフォーカス
+            setTimeout(() => {
+                const memoContent = document.getElementById('cli-memo-content');
+                memoContent.focus();
+                memoContent.placeholder = `L${lineNum} 付近への修正指示...`;
+            }, 300);
+
+            // カーソル位置を記録（送信時のlineHintに使用）
+            editor.setCursor(coords);
+        }, 500);
+    }, { passive: true });
+
+    wrapper.addEventListener('touchmove', () => {
+        if (cliLongPressTimer) {
+            clearTimeout(cliLongPressTimer);
+            cliLongPressTimer = null;
+        }
+    }, { passive: true });
+
+    wrapper.addEventListener('touchend', () => {
+        if (cliLongPressTimer) {
+            clearTimeout(cliLongPressTimer);
+            cliLongPressTimer = null;
+        }
+    }, { passive: true });
+}
+
+function showLongPressFeedback(x, y, text) {
+    const existing = document.querySelector('.cli-longpress-indicator');
+    if (existing) existing.remove();
+
+    const indicator = document.createElement('div');
+    indicator.className = 'cli-longpress-indicator';
+    indicator.textContent = '📌 ' + text;
+    indicator.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+    indicator.style.top = (y - 40) + 'px';
+    document.body.appendChild(indicator);
+
+    setTimeout(() => indicator.remove(), 1500);
 }
 
 console.log("✅ CLI Viewer モジュール読み込み完了");
