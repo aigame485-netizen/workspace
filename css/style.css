@@ -416,26 +416,74 @@
             height: 100% !important;
         }
 
-        /* メモエリア */
+        /* メモエリア（タブ化） */
         .cli-memo-area {
             flex-shrink: 0; background-color: #171923;
             border-top: 2px solid #4a5568;
             padding-bottom: env(safe-area-inset-bottom, 0px);
         }
         .cli-memo-header {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 10px 12px; cursor: pointer; color: #cbd5e0; font-size: 0.85rem;
+            display: flex; align-items: center;
+            padding: 0; color: #cbd5e0; font-size: 0.85rem;
             min-height: 40px;
         }
-        .cli-memo-header:hover { background-color: #2d3748; }
+        .cli-memo-tabs {
+            display: flex; flex-grow: 1;
+        }
+        .cli-memo-tab {
+            flex: 1; padding: 10px 8px; text-align: center;
+            cursor: pointer; border: none; background: none;
+            color: #718096; font-size: 0.8rem; transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+        .cli-memo-tab.active {
+            color: #63b3ed; border-bottom-color: #63b3ed;
+        }
+        .cli-memo-tab:hover:not(.active) { color: #a0aec0; background: #1a202c; }
+        .cli-memo-collapse-btn {
+            padding: 10px 12px; cursor: pointer; background: none; border: none;
+            color: #718096; font-size: 0.9rem;
+        }
         .cli-memo-body {
             padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
         }
         .cli-memo-body.collapsed { display: none; }
+        .cli-tab-content { display: none; }
+        .cli-tab-content.active { display: flex; flex-direction: column; gap: 8px; }
         #cli-memo-content {
             resize: vertical; min-height: 60px; max-height: 200px;
             line-height: 1.5;
         }
+
+        /* 指示パッド */
+        #cli-instruction-content {
+            resize: vertical; min-height: 80px; max-height: 300px;
+            line-height: 1.5; font-size: 0.9rem;
+        }
+        .cli-instruction-actions {
+            display: flex; gap: 8px; align-items: center;
+        }
+        .cli-instruction-actions .btn-copy {
+            flex: 1; background: linear-gradient(135deg, #6b46c1, #553c9a);
+            color: white; font-weight: bold; padding: 10px;
+            border-radius: 6px; border: none; cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .cli-instruction-actions .btn-copy:hover { filter: brightness(1.1); }
+        .cli-instruction-actions .btn-copy:active { transform: scale(0.97); }
+        .cli-instruction-actions .btn-clear {
+            padding: 10px 12px; background: #4a5568; color: #e2e8f0;
+            border-radius: 6px; border: none; cursor: pointer; font-size: 0.85rem;
+        }
+        .cli-copy-toast {
+            position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, #6b46c1, #553c9a);
+            color: white; padding: 12px 24px; border-radius: 8px;
+            font-size: 0.9rem; font-weight: bold; z-index: 20000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: bottom 0.3s ease; white-space: nowrap;
+        }
+        .cli-copy-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 
         /* 長押しフィードバック */
         .cli-longpress-indicator {

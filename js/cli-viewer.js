@@ -14,6 +14,7 @@ let cliMemoExpanded = true;
 let cliEditMode = false;           // 編集モードON/OFF
 let cliOriginalContent = '';       // 編集前の元テキスト（変更検知用）
 let cliHasUnsavedChanges = false;  // 未保存の変更があるか
+let cliActiveTab = 'memo';         // 'memo' | 'instruction'
 
 // =========================================
 // モード切替
@@ -429,11 +430,16 @@ async function cliSendMemo() {
     const pass = await getAuthPassword();
     if (!pass) return;
 
-    // カーソル位置から行番号ヒントを取得
+    // カーソル位置から行番号・行テキストを取得
     let lineHint = null;
+    let lineText = null;
     if (cliEditorInstance) {
         const cursor = cliEditorInstance.getCursor();
-        if (cursor.line > 0) lineHint = cursor.line + 1;
+        if (cursor.line > 0) {
+            lineHint = cursor.line + 1;
+            lineText = (cliEditorInstance.getLine(cursor.line) || '').trim();
+            if (lineText.length > 80) lineText = lineText.substring(0, 80) + '…';
+        }
     }
 
     const memoData = {
@@ -441,6 +447,7 @@ async function cliSendMemo() {
         memo: {
             section: section || null,
             lineHint: lineHint,
+            lineText: lineText || null,
             content: content
         }
     };
@@ -622,32 +629,54 @@ function setupLongPress(editor) {
             const line = coords.line;
             const lineNum = line + 1;
 
+            // 該当行のテキストを取得
+            const lineText = editor.getLine(line) || '';
+            // 表示用に30文字でトリム
+            const linePreview = lineText.length > 30 ? lineText.substring(0, 30) + '…' : lineText;
+
             // 上方向に最も近い見出し（# で始まる行）を検索
             let sectionName = '';
             for (let i = line; i >= 0; i--) {
-                const lineText = editor.getLine(i);
-                if (lineText && /^#{1,4}\s+/.test(lineText)) {
-                    sectionName = lineText.replace(/^#+\s*/, '').trim();
+                const lt = editor.getLine(i);
+                if (lt && /^#{1,4}\s+/.test(lt)) {
+                    sectionName = lt.replace(/^#+\s*/, '').trim();
                     break;
                 }
             }
 
-            // メモ欄にライン情報をセット
-            document.getElementById('cli-memo-section').value = sectionName;
-            expandCliMemo();
-
             // フィードバック表示
-            showLongPressFeedback(touchX, touchY, `L${lineNum}: ${sectionName || '(セクションなし)'}`);
+            showLongPressFeedback(touchX, touchY, `L${lineNum}: ${linePreview || '(空行)'}`);
 
-            // メモ入力欄にフォーカス
-            setTimeout(() => {
-                const memoContent = document.getElementById('cli-memo-content');
-                memoContent.focus();
-                memoContent.placeholder = `L${lineNum} 付近への修正指示...`;
-            }, 300);
-
-            // カーソル位置を記録（送信時のlineHintに使用）
+            // カーソル位置を記録
             editor.setCursor(coords);
+
+            // アクティブタブに応じて動作を分岐
+            if (cliActiveTab === 'instruction') {
+                // 指示パッドに行テキストを追記
+                expandCliMemo();
+                const textarea = document.getElementById('cli-instruction-content');
+                const ref = `[L${lineNum}] ${lineText.trim()}`;
+                if (textarea.value && !textarea.value.endsWith('\n')) {
+                    textarea.value += '\n';
+                }
+                textarea.value += ref + '\n';
+                // 末尾にスクロール
+                textarea.scrollTop = textarea.scrollHeight;
+                setTimeout(() => textarea.focus(), 300);
+            } else {
+                // メモタブ: 従来動作（セクション名+行テキストをセット）
+                const sectionWithLine = sectionName
+                    ? `${sectionName} (L${lineNum}: ${lineText.trim().substring(0, 40)})`
+                    : `L${lineNum}: ${lineText.trim().substring(0, 50)}`;
+                document.getElementById('cli-memo-section').value = sectionWithLine;
+                expandCliMemo();
+
+                setTimeout(() => {
+                    const memoContent = document.getElementById('cli-memo-content');
+                    memoContent.focus();
+                    memoContent.placeholder = `L${lineNum} "${linePreview}" への修正指示...`;
+                }, 300);
+            }
         }, 500);
     }, { passive: true });
 
@@ -853,4 +882,70 @@ function showCliSaveToast() {
     }, 2500);
 }
 
-console.log("✅ CLI Viewer モジュール読み込み完了（編集モード対応）");
+// =========================================
+// タブ切替（メモ / 指示パッド）
+// =========================================
+
+function cliSwitchTab(tabName) {
+    cliActiveTab = tabName;
+
+    // タブボタンの状態更新
+    document.querySelectorAll('.cli-memo-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+
+    // コンテンツの表示切替
+    document.getElementById('cli-tab-memo').classList.toggle('active', tabName === 'memo');
+    document.getElementById('cli-tab-instruction').classList.toggle('active', tabName === 'instruction');
+
+    // CodeMirrorのサイズ再計算
+    if (cliEditorInstance) setTimeout(() => cliEditorInstance.refresh(), 100);
+}
+
+// =========================================
+// 指示パッド機能
+// =========================================
+
+async function cliCopyInstruction() {
+    const textarea = document.getElementById('cli-instruction-content');
+    const text = textarea.value.trim();
+
+    if (!text) {
+        alert('コピーする内容がありません');
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(text);
+        showCliCopyToast();
+    } catch (e) {
+        // フォールバック: execCommand
+        textarea.select();
+        document.execCommand('copy');
+        showCliCopyToast();
+    }
+}
+
+function cliClearInstruction() {
+    const textarea = document.getElementById('cli-instruction-content');
+    if (textarea.value.trim() && !confirm('指示パッドの内容を消去しますか？')) return;
+    textarea.value = '';
+}
+
+function showCliCopyToast() {
+    const existing = document.querySelector('.cli-copy-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'cli-copy-toast';
+    toast.textContent = '📋 クリップボードにコピーしました';
+    document.body.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2000);
+}
+
+console.log("✅ CLI Viewer モジュール読み込み完了（編集モード・指示パッド対応）");

@@ -96,16 +96,30 @@
             </div>
 
             <div class="cli-memo-area" id="cli-memo-area">
-                <div class="cli-memo-header" onclick="toggleCliMemoExpand()">
-                    <span>📝 メモ / フィードバック</span>
-                    <button class="btn-tool" id="cli-memo-toggle">▲</button>
+                <div class="cli-memo-header">
+                    <div class="cli-memo-tabs">
+                        <button class="cli-memo-tab active" data-tab="memo" onclick="cliSwitchTab('memo')">📝 メモ</button>
+                        <button class="cli-memo-tab" data-tab="instruction" onclick="cliSwitchTab('instruction')">📋 指示パッド</button>
+                    </div>
+                    <button class="cli-memo-collapse-btn" id="cli-memo-toggle" onclick="toggleCliMemoExpand()">▲</button>
                 </div>
                 <div class="cli-memo-body" id="cli-memo-body">
-                    <input type="text" class="input-text" id="cli-memo-section" placeholder="セクション名（任意）">
-                    <textarea id="cli-memo-content" class="input-text" rows="3" placeholder="修正指示やメモを入力..."></textarea>
-                    <div style="display:flex; gap:8px;">
-                        <button class="btn-control btn-cloud" onclick="cliSendMemo()" style="flex:1;">📤 メモを送信</button>
-                        <button class="btn-tool" onclick="cliShowMemoHistory()" title="送信済みメモ">📋</button>
+                    <!-- メモタブ -->
+                    <div class="cli-tab-content active" id="cli-tab-memo">
+                        <input type="text" class="input-text" id="cli-memo-section" placeholder="セクション名（任意）">
+                        <textarea id="cli-memo-content" class="input-text" rows="3" placeholder="修正指示やメモを入力..."></textarea>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn-control btn-cloud" onclick="cliSendMemo()" style="flex:1;">📤 メモを送信</button>
+                            <button class="btn-tool" onclick="cliShowMemoHistory()" title="送信済みメモ">📋</button>
+                        </div>
+                    </div>
+                    <!-- 指示パッドタブ -->
+                    <div class="cli-tab-content" id="cli-tab-instruction">
+                        <textarea id="cli-instruction-content" class="input-text" rows="4" placeholder="AIへの指示をここに書き溜める...&#10;長押しで行テキストを挿入できます"></textarea>
+                        <div class="cli-instruction-actions">
+                            <button class="btn-copy" onclick="cliCopyInstruction()">📋 コピー</button>
+                            <button class="btn-clear" onclick="cliClearInstruction()">消去</button>
+                        </div>
                     </div>
                 </div>
             </div>
