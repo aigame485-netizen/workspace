@@ -117,6 +117,7 @@
                     <div class="cli-tab-content" id="cli-tab-instruction">
                         <textarea id="cli-instruction-content" class="input-text" rows="4" placeholder="AIへの指示をここに書き溜める...&#10;長押しで行テキストを挿入できます"></textarea>
                         <div class="cli-instruction-actions">
+                            <button class="btn-path-browse" onclick="cliOpenFolderBrowser()">📂 パス</button>
                             <button class="btn-copy" onclick="cliCopyInstruction()">📋 コピー</button>
                             <button class="btn-clear" onclick="cliClearInstruction()">消去</button>
                         </div>
@@ -166,6 +167,22 @@
             </div>
             <div class="modal-footer">
                 <button class="btn-control" onclick="closeModal('cloudModal')">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- フォルダツリーブラウザ モーダル -->
+    <div id="folderBrowserModal" class="modal-overlay" onclick="if(event.target===this) closeFolderBrowser()">
+        <div class="modal-box folder-browser-modal">
+            <h3 class="modal-title">📂 パス挿入</h3>
+            <div class="modal-body">
+                <input type="text" id="folder-browser-search" class="input-text" placeholder="🔍 フォルダ・ファイル名で検索..." oninput="cliFolderSearch(this.value)">
+                <div id="folder-browser-tree" class="folder-browser-tree">
+                    <div style="text-align:center; color:#718096; padding:20px;">読み込み中...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-control" onclick="closeFolderBrowser()">閉じる</button>
             </div>
         </div>
     </div>

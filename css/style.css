@@ -561,3 +561,88 @@
         }
         .cli-save-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 
+        /* =========================================
+           フォルダツリーブラウザ
+           ========================================= */
+
+        .folder-browser-modal {
+            max-width: 500px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .folder-browser-modal .modal-body {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .folder-browser-tree {
+            flex: 1;
+            overflow-y: auto;
+            background: #1a202c;
+            border-radius: 4px;
+            padding: 8px;
+            min-height: 200px;
+            max-height: 50vh;
+        }
+        .fb-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #e2e8f0;
+            transition: background 0.15s;
+            gap: 6px;
+        }
+        .fb-item:hover { background-color: #4a5568; }
+        .fb-item:active { background-color: #2b6cb0; }
+        .fb-item-icon { flex-shrink: 0; font-size: 1rem; }
+        .fb-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fb-item-arrow {
+            flex-shrink: 0; font-size: 0.7rem; color: #718096;
+            transition: transform 0.2s;
+        }
+        .fb-item-arrow.open { transform: rotate(90deg); }
+        .fb-item.fb-dir { color: #ecc94b; font-weight: bold; }
+        .fb-item.fb-file { color: #e2e8f0; padding-left: 20px; }
+        .fb-children { padding-left: 16px; display: none; }
+        .fb-children.open { display: block; }
+        .fb-insert-hint {
+            font-size: 0.7rem; color: #718096; flex-shrink: 0;
+            opacity: 0; transition: opacity 0.15s;
+        }
+        .fb-item:hover .fb-insert-hint { opacity: 1; }
+        .fb-path-preview {
+            font-size: 0.7rem; color: #a0aec0;
+            padding: 4px 10px; margin-top: 2px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .fb-no-results {
+            text-align: center; color: #718096; padding: 20px;
+            font-size: 0.85rem;
+        }
+        .fb-search-match { background-color: rgba(99, 179, 237, 0.2); border-radius: 2px; }
+
+        /* パス挿入ボタン */
+        .btn-path-browse {
+            padding: 10px 12px; background: linear-gradient(135deg, #d69e2e, #b7791f);
+            color: white; font-weight: bold;
+            border-radius: 6px; border: none; cursor: pointer; font-size: 0.85rem;
+        }
+        .btn-path-browse:hover { filter: brightness(1.1); }
+        .btn-path-browse:active { transform: scale(0.97); }
+
+        /* 挿入完了フィードバック */
+        .fb-inserted-toast {
+            position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, #d69e2e, #b7791f);
+            color: white; padding: 12px 24px; border-radius: 8px;
+            font-size: 0.9rem; font-weight: bold; z-index: 30000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: bottom 0.3s ease; white-space: nowrap;
+        }
+        .fb-inserted-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+

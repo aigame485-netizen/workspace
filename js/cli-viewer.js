@@ -948,4 +948,283 @@ function showCliCopyToast() {
     }, 2000);
 }
 
-console.log("✅ CLI Viewer モジュール読み込み完了（編集モード・指示パッド対応）");
+// =========================================
+// フォルダツリーブラウザ
+// =========================================
+
+let fbTreeData = null;      // キャッシュしたツリーデータ
+let fbTreeFlat = [];        // フラット化したリスト（検索用）
+
+async function cliOpenFolderBrowser() {
+    const modal = document.getElementById('folderBrowserModal');
+    modal.classList.add('show');
+
+    const treeEl = document.getElementById('folder-browser-tree');
+    const searchEl = document.getElementById('folder-browser-search');
+    searchEl.value = '';
+
+    // キャッシュがあれば即表示、なければGASから取得
+    if (fbTreeData) {
+        fbRenderTree(fbTreeData.tree, treeEl);
+    } else {
+        treeEl.innerHTML = '<div style="text-align:center; color:#718096; padding:20px;">📡 フォルダ構造を取得中...</div>';
+    }
+
+    // GASから最新を取得
+    await fbFetchTree();
+}
+
+function closeFolderBrowser() {
+    document.getElementById('folderBrowserModal').classList.remove('show');
+}
+
+async function fbFetchTree() {
+    const pass = await getAuthPassword();
+    if (!pass) return;
+
+    const treeEl = document.getElementById('folder-browser-tree');
+
+    try {
+        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent('_system/folder_tree.json')}`;
+        const res = await fetch(url, { method: 'POST' });
+        const json = await res.json();
+
+        if (json.status === 'success') {
+            let content = json.content;
+
+            // 暗号化データの復号
+            try {
+                const parsed = JSON.parse(content);
+                if (parsed && parsed.encrypted) {
+                    const encKey = await getEncryptionKey();
+                    if (encKey) {
+                        content = await decryptData(parsed, encKey);
+                    } else {
+                        treeEl.innerHTML = '<div class="fb-no-results">🔐 暗号キーを設定してください</div>';
+                        return;
+                    }
+                }
+            } catch (_) {}
+
+            fbTreeData = JSON.parse(content);
+            fbTreeFlat = fbFlattenTree(fbTreeData.tree);
+            fbRenderTree(fbTreeData.tree, treeEl);
+        } else {
+            treeEl.innerHTML = '<div class="fb-no-results">フォルダ構造がまだアップロードされていません<br><span style="font-size:0.75rem;">PC側で push-tree を実行してください</span></div>';
+        }
+    } catch (e) {
+        treeEl.innerHTML = `<div class="fb-no-results">取得エラー: ${e.message}</div>`;
+    }
+}
+
+function fbFlattenTree(items, result = []) {
+    for (const item of items) {
+        result.push(item);
+        if (item.children) {
+            fbFlattenTree(item.children, result);
+        }
+    }
+    return result;
+}
+
+function fbRenderTree(items, container) {
+    container.innerHTML = '';
+    if (!items || items.length === 0) {
+        container.innerHTML = '<div class="fb-no-results">フォルダが空です</div>';
+        return;
+    }
+    items.forEach(item => {
+        container.appendChild(fbCreateNode(item));
+    });
+}
+
+function fbCreateNode(item) {
+    const wrapper = document.createElement('div');
+
+    if (item.type === 'dir') {
+        // フォルダ行
+        const row = document.createElement('div');
+        row.className = 'fb-item fb-dir';
+
+        const arrow = document.createElement('span');
+        arrow.className = 'fb-item-arrow';
+        arrow.textContent = '▶';
+
+        const icon = document.createElement('span');
+        icon.className = 'fb-item-icon';
+        icon.textContent = '📁';
+
+        const name = document.createElement('span');
+        name.className = 'fb-item-name';
+        name.textContent = item.name;
+
+        const hint = document.createElement('span');
+        hint.className = 'fb-insert-hint';
+        hint.textContent = '挿入';
+
+        row.appendChild(arrow);
+        row.appendChild(icon);
+        row.appendChild(name);
+        row.appendChild(hint);
+
+        // 子要素コンテナ
+        const childContainer = document.createElement('div');
+        childContainer.className = 'fb-children';
+
+        if (item.children && item.children.length > 0) {
+            item.children.forEach(child => {
+                childContainer.appendChild(fbCreateNode(child));
+            });
+        }
+
+        // フォルダクリック: 展開/折りたたみ + 長押しでパス挿入
+        let tapTimer = null;
+        let tapped = false;
+
+        row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // 展開/折りたたみ
+            const isOpen = childContainer.classList.contains('open');
+            childContainer.classList.toggle('open');
+            arrow.classList.toggle('open');
+            icon.textContent = childContainer.classList.contains('open') ? '📂' : '📁';
+        });
+
+        // パス挿入はhintボタンをタップ
+        hint.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fbInsertPath(item.path);
+        });
+
+        wrapper.appendChild(row);
+        wrapper.appendChild(childContainer);
+    } else {
+        // ファイル行
+        const row = document.createElement('div');
+        row.className = 'fb-item fb-file';
+
+        const icon = document.createElement('span');
+        icon.className = 'fb-item-icon';
+        icon.textContent = '📄';
+
+        const name = document.createElement('span');
+        name.className = 'fb-item-name';
+        name.textContent = item.name;
+
+        const hint = document.createElement('span');
+        hint.className = 'fb-insert-hint';
+        hint.textContent = '挿入';
+
+        row.appendChild(icon);
+        row.appendChild(name);
+        row.appendChild(hint);
+
+        row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fbInsertPath(item.path);
+        });
+
+        wrapper.appendChild(row);
+    }
+
+    return wrapper;
+}
+
+function fbInsertPath(path) {
+    const textarea = document.getElementById('cli-instruction-content');
+
+    // カーソル位置にパスを挿入
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const insert = path;
+
+    textarea.value = text.substring(0, start) + insert + text.substring(end);
+    textarea.selectionStart = textarea.selectionEnd = start + insert.length;
+
+    // モーダルを閉じる
+    closeFolderBrowser();
+
+    // トースト表示
+    fbShowInsertToast(path);
+
+    // 指示パッドにフォーカス
+    setTimeout(() => textarea.focus(), 100);
+}
+
+function fbShowInsertToast(path) {
+    const existing = document.querySelector('.fb-inserted-toast');
+    if (existing) existing.remove();
+
+    const displayPath = path.length > 40 ? '...' + path.slice(-37) : path;
+
+    const toast = document.createElement('div');
+    toast.className = 'fb-inserted-toast';
+    toast.textContent = `📂 ${displayPath} を挿入しました`;
+    document.body.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2000);
+}
+
+// 検索フィルター
+function cliFolderSearch(query) {
+    const treeEl = document.getElementById('folder-browser-tree');
+    query = query.trim().toLowerCase();
+
+    if (!fbTreeData) return;
+
+    if (!query) {
+        fbRenderTree(fbTreeData.tree, treeEl);
+        return;
+    }
+
+    // フラットリストから検索
+    const matches = fbTreeFlat.filter(item =>
+        item.name.toLowerCase().includes(query) ||
+        item.path.toLowerCase().includes(query)
+    );
+
+    treeEl.innerHTML = '';
+
+    if (matches.length === 0) {
+        treeEl.innerHTML = '<div class="fb-no-results">一致するパスがありません</div>';
+        return;
+    }
+
+    // 検索結果をフラットに表示
+    matches.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'fb-item ' + (item.type === 'dir' ? 'fb-dir' : 'fb-file');
+
+        const icon = document.createElement('span');
+        icon.className = 'fb-item-icon';
+        icon.textContent = item.type === 'dir' ? '📂' : '📄';
+
+        const nameWrap = document.createElement('div');
+        nameWrap.style.cssText = 'flex:1; overflow:hidden;';
+
+        const name = document.createElement('div');
+        name.className = 'fb-item-name';
+        name.textContent = item.name;
+
+        const pathPreview = document.createElement('div');
+        pathPreview.className = 'fb-path-preview';
+        pathPreview.textContent = item.path;
+
+        nameWrap.appendChild(name);
+        nameWrap.appendChild(pathPreview);
+
+        row.appendChild(icon);
+        row.appendChild(nameWrap);
+
+        row.addEventListener('click', () => fbInsertPath(item.path));
+
+        treeEl.appendChild(row);
+    });
+}
+
+console.log("✅ CLI Viewer モジュール読み込み完了（編集モード・指示パッド・パスブラウザ対応）");
