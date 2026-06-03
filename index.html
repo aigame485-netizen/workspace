@@ -70,6 +70,7 @@
             <div style="flex-grow:1;"></div>
             <button class="btn-tool btn-edit" id="cli-btn-edit" onclick="toggleCliEditMode()">📝 編集</button>
             <button class="btn-tool btn-save" id="cli-btn-save" onclick="cliSaveFile()" style="display:none;">💾 保存</button>
+            <button class="btn-tool btn-pin" id="cli-pin-btn" onclick="toggleCliPinMode()" title="ピンモード: タップで行をメモに転記">📌</button>
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(-2)">A-</button>
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(2)">A+</button>
             <button class="btn-tool" onclick="cliRefreshFiles()">🔄</button>
@@ -91,6 +92,12 @@
         <div class="cli-sidebar-overlay" id="cli-sidebar-overlay" onclick="toggleCliSidebar()"></div>
 
         <div class="cli-main">
+            <div class="cli-draft-banner" id="cli-draft-banner" style="display:none;">
+                <span id="cli-draft-banner-text">📝 下書きを復元しました</span>
+                <div style="flex-grow:1;"></div>
+                <button class="btn-tool" onclick="cliDiscardDraftAndRefresh()">🔄 サーバー版</button>
+                <button class="btn-tool" onclick="cliDismissDraftBanner()">✕</button>
+            </div>
             <div class="cli-viewer-area" id="cli-viewer-area">
                 <textarea id="cli-viewer-textarea" style="display:none;"></textarea>
             </div>
@@ -111,6 +118,7 @@
                         <div style="display:flex; gap:8px;">
                             <button class="btn-control btn-cloud" onclick="cliSendMemo()" style="flex:1;">📤 メモを送信</button>
                             <button class="btn-tool" onclick="cliShowMemoHistory()" title="送信済みメモ">📋</button>
+                            <button class="btn-tool btn-danger" onclick="cliDeleteAllMemos()" title="全メモ削除" style="padding:4px 8px;">🗑️</button>
                         </div>
                     </div>
                     <!-- 指示パッドタブ -->

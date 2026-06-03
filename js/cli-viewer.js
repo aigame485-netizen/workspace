@@ -15,6 +15,9 @@ let cliEditMode = false;           // 編集モードON/OFF
 let cliOriginalContent = '';       // 編集前の元テキスト（変更検知用）
 let cliHasUnsavedChanges = false;  // 未保存の変更があるか
 let cliActiveTab = 'memo';         // 'memo' | 'instruction'
+let cliPinMode = false;            // ピンモード（タップで行をメモに転記）
+let cliPinTouchMoved = false;      // ピンモード: タッチ中にmoveしたか
+let cliDraftSaveTimer = null;      // 下書き自動保存タイマー
 
 // =========================================
 // モード切替
@@ -44,8 +47,9 @@ function toggleCliViewer() {
         if (cliHasUnsavedChanges) {
             if (!confirm('未保存の変更があります。破棄して戻りますか？')) return;
         }
-        // 編集モードを解除
-        if (cliEditMode) cliExitEditMode();
+        // 編集モードを解除（明示的に破棄→下書きも消す）
+        if (cliEditMode) cliExitEditMode(true);
+        cliDismissDraftBanner();
         canvas.style.display = '';
         // ヘッダー要素を復元
         Array.from(header.children).forEach(el => {
@@ -80,8 +84,8 @@ async function initCliViewer() {
             "'Helvetica Neue', Arial, 'Hiragino Sans', 'Meiryo', sans-serif";
         setTimeout(() => cliEditorInstance.refresh(), 100);
 
-        // 長押しでメモにライン情報を送る
-        setupLongPress(cliEditorInstance);
+        // ピンモードのタップハンドラ設定
+        setupPinMode(cliEditorInstance);
     }
 
     // キャッシュから即表示 → 裏でサーバーから更新
@@ -240,8 +244,34 @@ function cliCreateFileItem(fileInfo) {
 // =========================================
 
 async function cliOpenFile(path) {
+    // 別ファイルの編集中なら先に処理
+    if (cliEditMode && cliCurrentFile && cliCurrentFile !== path) {
+        if (cliHasUnsavedChanges) {
+            if (!confirm('現在のファイルに未保存の変更があります。別のファイルを開きますか？')) return;
+        }
+        cliExitEditMode(true);
+    }
+
     cliCurrentFile = path;
     document.getElementById('cli-current-filename').textContent = path;
+    cliDismissDraftBanner();
+
+    // 下書きチェック
+    const draft = await cliGetDraft(path);
+    if (draft) {
+        const cached = await cliGetCachedFile(path);
+        cliEditorInstance.setValue(draft.content);
+        // 編集モードに入る（元テキストはキャッシュのサーバー版）
+        cliEnterEditMode(cached ? cached.content : '');
+        cliHasUnsavedChanges = true;
+        cliUpdateEditButtons();
+        closeCliSidebar();
+        setTimeout(() => cliEditorInstance.refresh(), 50);
+        cliShowDraftBanner(draft.lastFetched);
+        cliRenderFileTree(cliFileList);
+        updateStatus('📝 下書き復元', true);
+        return;
+    }
 
     // キャッシュから即表示
     const cached = await cliGetCachedFile(path);
@@ -287,7 +317,7 @@ async function cliOpenFile(path) {
             }
 
             cliEditorInstance.setValue(content);
-            cliOriginalContent = content; // 元テキストを記録
+            cliOriginalContent = content;
             cliHasUnsavedChanges = false;
             cliUpdateEditButtons();
             await cliSaveFileToCache(path, content, json.updatedAt);
@@ -302,7 +332,6 @@ async function cliOpenFile(path) {
         updateStatus('取得失敗', false, true);
     }
 
-    // ファイルツリーの選択状態を更新
     cliRenderFileTree(cliFileList);
 }
 
@@ -607,31 +636,29 @@ async function cliSaveFileListToCache(files) {
 }
 
 // =========================================
-// 長押しでメモにライン情報を送る
+// ピンモード（タップで行をメモに転記）
 // =========================================
 
-let cliLongPressTimer = null;
-let cliLongPressFired = false;
-
-function setupLongPress(editor) {
+function setupPinMode(editor) {
     const wrapper = editor.getWrapperElement();
 
-    wrapper.addEventListener('touchstart', (e) => {
-        cliLongPressFired = false;
-        const touch = e.touches[0];
-        const touchX = touch.clientX;
-        const touchY = touch.clientY;
+    wrapper.addEventListener('touchstart', () => {
+        cliPinTouchMoved = false;
+    }, { passive: true });
 
-        cliLongPressTimer = setTimeout(() => {
-            cliLongPressFired = true;
-            // タッチ位置からCodeMirrorの行番号を取得
-            const coords = editor.coordsChar({ left: touchX, top: touchY });
-            const line = coords.line;
+    wrapper.addEventListener('touchmove', () => {
+        cliPinTouchMoved = true;
+    }, { passive: true });
+
+    wrapper.addEventListener('touchend', (e) => {
+        if (!cliPinMode || cliPinTouchMoved) return;
+
+        // ピンモードON + タップ（スクロールしてない）のみ発火
+        setTimeout(() => {
+            const cursor = editor.getCursor();
+            const line = cursor.line;
             const lineNum = line + 1;
-
-            // 該当行のテキストを取得
             const lineText = editor.getLine(line) || '';
-            // 表示用に30文字でトリム
             const linePreview = lineText.length > 30 ? lineText.substring(0, 30) + '…' : lineText;
 
             // 上方向に最も近い見出し（# で始まる行）を検索
@@ -645,14 +672,13 @@ function setupLongPress(editor) {
             }
 
             // フィードバック表示
-            showLongPressFeedback(touchX, touchY, `L${lineNum}: ${linePreview || '(空行)'}`);
-
-            // カーソル位置を記録
-            editor.setCursor(coords);
+            const touch = e.changedTouches[0];
+            if (touch) {
+                showPinFeedback(touch.clientX, touch.clientY, `L${lineNum}: ${linePreview || '(空行)'}`);
+            }
 
             // アクティブタブに応じて動作を分岐
             if (cliActiveTab === 'instruction') {
-                // 指示パッドに行テキストを追記
                 expandCliMemo();
                 const textarea = document.getElementById('cli-instruction-content');
                 const ref = `[L${lineNum}] ${lineText.trim()}`;
@@ -660,11 +686,9 @@ function setupLongPress(editor) {
                     textarea.value += '\n';
                 }
                 textarea.value += ref + '\n';
-                // 末尾にスクロール
                 textarea.scrollTop = textarea.scrollHeight;
                 setTimeout(() => textarea.focus(), 300);
             } else {
-                // メモタブ: 従来動作（セクション名+行テキストをセット）
                 const sectionWithLine = sectionName
                     ? `${sectionName} (L${lineNum}: ${lineText.trim().substring(0, 40)})`
                     : `L${lineNum}: ${lineText.trim().substring(0, 50)}`;
@@ -677,25 +701,23 @@ function setupLongPress(editor) {
                     memoContent.placeholder = `L${lineNum} "${linePreview}" への修正指示...`;
                 }, 300);
             }
-        }, 500);
-    }, { passive: true });
-
-    wrapper.addEventListener('touchmove', () => {
-        if (cliLongPressTimer) {
-            clearTimeout(cliLongPressTimer);
-            cliLongPressTimer = null;
-        }
-    }, { passive: true });
-
-    wrapper.addEventListener('touchend', () => {
-        if (cliLongPressTimer) {
-            clearTimeout(cliLongPressTimer);
-            cliLongPressTimer = null;
-        }
+        }, 50);
     }, { passive: true });
 }
 
-function showLongPressFeedback(x, y, text) {
+function toggleCliPinMode() {
+    cliPinMode = !cliPinMode;
+    const btn = document.getElementById('cli-pin-btn');
+    if (cliPinMode) {
+        btn.classList.add('cli-pin-active');
+        btn.textContent = '📌 ON';
+    } else {
+        btn.classList.remove('cli-pin-active');
+        btn.textContent = '📌';
+    }
+}
+
+function showPinFeedback(x, y, text) {
     const existing = document.querySelector('.cli-longpress-indicator');
     if (existing) existing.remove();
 
@@ -727,16 +749,16 @@ function toggleCliEditMode() {
         if (cliHasUnsavedChanges) {
             if (!confirm('未保存の変更があります。破棄しますか？')) return;
         }
-        cliExitEditMode();
+        cliExitEditMode(true);
     } else {
         // 編集モード開始
         cliEnterEditMode();
     }
 }
 
-function cliEnterEditMode() {
+function cliEnterEditMode(overrideOriginal = null) {
     cliEditMode = true;
-    cliOriginalContent = cliEditorInstance.getValue();
+    cliOriginalContent = overrideOriginal !== null ? overrideOriginal : cliEditorInstance.getValue();
     cliHasUnsavedChanges = false;
 
     // CodeMirrorを編集可能にする
@@ -754,9 +776,14 @@ function cliEnterEditMode() {
     cliEditorInstance.focus();
 }
 
-function cliExitEditMode() {
+function cliExitEditMode(clearDraft = false) {
     cliEditMode = false;
     cliHasUnsavedChanges = false;
+
+    // 下書きを消す（ユーザーが明示的に破棄した場合）
+    if (clearDraft && cliCurrentFile) {
+        cliClearDraft(cliCurrentFile);
+    }
 
     // CodeMirrorをreadOnlyに戻す
     cliEditorInstance.setOption('readOnly', true);
@@ -771,10 +798,22 @@ function cliExitEditMode() {
 }
 
 function cliOnEditorChange() {
-    // 元テキストと現在のテキストを比較して変更を検知
     const currentText = cliEditorInstance.getValue();
     cliHasUnsavedChanges = (currentText !== cliOriginalContent);
     cliUpdateEditButtons();
+
+    // IndexedDBへ下書き自動保存
+    if (cliEditMode && cliCurrentFile) {
+        if (cliDraftSaveTimer) clearTimeout(cliDraftSaveTimer);
+        if (cliHasUnsavedChanges) {
+            cliDraftSaveTimer = setTimeout(() => {
+                cliSaveDraft(cliCurrentFile, currentText);
+            }, 2000);
+        } else {
+            // 元に戻った場合、下書きを消す
+            cliClearDraft(cliCurrentFile);
+        }
+    }
 }
 
 /**
@@ -851,6 +890,10 @@ async function cliSaveFile() {
 
             // キャッシュも更新
             await cliSaveFileToCache(cliCurrentFile, content, new Date().toISOString());
+
+            // 下書きを消す（GASに保存できたので不要）
+            await cliClearDraft(cliCurrentFile);
+            cliDismissDraftBanner();
 
             updateStatus('✅ 保存完了', true);
             showCliSaveToast();
@@ -1227,4 +1270,138 @@ function cliFolderSearch(query) {
     });
 }
 
-console.log("✅ CLI Viewer モジュール読み込み完了（編集モード・指示パッド・パスブラウザ対応）");
+// =========================================
+// メモ全削除
+// =========================================
+
+async function cliDeleteAllMemos() {
+    if (!confirm('送信済みメモを全て削除しますか？\n（この操作は取り消せません）')) return;
+
+    const pass = await getAuthPassword();
+    if (!pass) return;
+
+    try {
+        updateStatus('全メモ削除中...', false);
+        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_memo_delete_all`;
+        const res = await fetch(url, { method: 'POST' });
+        const json = await res.json();
+
+        if (json.status === 'success') {
+            updateStatus('全メモ削除完了', true);
+            alert(`${json.deletedCount}件のメモファイルを削除しました`);
+        } else {
+            throw new Error(json.message);
+        }
+    } catch (e) {
+        alert('全メモ削除失敗: ' + e.message);
+        updateStatus('全メモ削除失敗', false, true);
+    }
+}
+
+// =========================================
+// IndexedDB 下書き自動保存
+// =========================================
+
+async function cliSaveDraft(path, content) {
+    if (!db) return;
+    try {
+        const tx = db.transaction([STORE_CLI_CACHE], 'readwrite');
+        tx.objectStore(STORE_CLI_CACHE).put({
+            path: `draft:${path}`,
+            content: content,
+            lastFetched: Date.now(),
+            serverModified: null
+        });
+    } catch (e) { /* 下書き保存失敗は無視 */ }
+}
+
+async function cliGetDraft(path) {
+    if (!db) return null;
+    try {
+        const tx = db.transaction([STORE_CLI_CACHE], 'readonly');
+        const req = tx.objectStore(STORE_CLI_CACHE).get(`draft:${path}`);
+        return await new Promise(r => req.onsuccess = () => r(req.result));
+    } catch (e) { return null; }
+}
+
+async function cliClearDraft(path) {
+    if (!db) return;
+    try {
+        const tx = db.transaction([STORE_CLI_CACHE], 'readwrite');
+        tx.objectStore(STORE_CLI_CACHE).delete(`draft:${path}`);
+    } catch (e) { /* 無視 */ }
+}
+
+// =========================================
+// 下書きバナー制御
+// =========================================
+
+function cliShowDraftBanner(savedTimestamp) {
+    const banner = document.getElementById('cli-draft-banner');
+    const text = document.getElementById('cli-draft-banner-text');
+    const time = new Date(savedTimestamp).toLocaleString('ja-JP');
+    text.textContent = `📝 下書きを復元しました（${time}保存）`;
+    banner.style.display = 'flex';
+}
+
+function cliDismissDraftBanner() {
+    const banner = document.getElementById('cli-draft-banner');
+    if (banner) banner.style.display = 'none';
+}
+
+async function cliDiscardDraftAndRefresh() {
+    if (!cliCurrentFile) return;
+    if (!confirm('下書きを破棄してサーバーから最新版を取得しますか？')) return;
+
+    // 下書きを消す
+    await cliClearDraft(cliCurrentFile);
+    cliDismissDraftBanner();
+
+    // 編集モード解除
+    if (cliEditMode) cliExitEditMode(false);
+
+    // サーバーから再取得
+    const pass = await getAuthPassword();
+    if (!pass) return;
+
+    try {
+        updateStatus('ファイル取得中...', false);
+        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(cliCurrentFile)}`;
+        const res = await fetch(url, { method: 'POST' });
+        const json = await res.json();
+
+        if (json.status === 'success') {
+            let content = json.content;
+
+            try {
+                const parsed = JSON.parse(content);
+                if (parsed && parsed.encrypted) {
+                    const encKey = await getEncryptionKey();
+                    if (!encKey) {
+                        content = '[暗号化データ] 暗号キーを設定してください';
+                    } else {
+                        try {
+                            content = await decryptData(parsed, encKey);
+                        } catch (decErr) {
+                            content = '[復号失敗] 暗号キーが正しいか確認してください';
+                        }
+                    }
+                }
+            } catch (parseErr) { }
+
+            cliEditorInstance.setValue(content);
+            cliOriginalContent = content;
+            cliHasUnsavedChanges = false;
+            cliUpdateEditButtons();
+            await cliSaveFileToCache(cliCurrentFile, content, json.updatedAt);
+            updateStatus('✅ サーバー版に戻しました', true);
+        } else {
+            throw new Error(json.message);
+        }
+    } catch (e) {
+        alert('取得失敗: ' + e.message);
+        updateStatus('取得失敗', false, true);
+    }
+}
+
+console.log("✅ CLI Viewer モジュール読み込み完了（ピンモード・下書き自動保存・メモ全削除対応）");

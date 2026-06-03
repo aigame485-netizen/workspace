@@ -237,6 +237,19 @@ function handleRequest(e) {
     }
 
     // ------------------------------------------
+    // CLI: 全メモ一括削除 (cli_memo_delete_all)
+    // ------------------------------------------
+    if (action === "cli_memo_delete_all") {
+      const files = DriveApp.searchFiles("title contains '" + CLI_MEMO_PREFIX + "' and trashed = false");
+      let count = 0;
+      while (files.hasNext()) {
+        files.next().setTrashed(true);
+        count++;
+      }
+      return createJsonOutput({ status: "success", deletedCount: count });
+    }
+
+    // ------------------------------------------
     // CLI: メモ削除 (cli_memo_delete)
     // ------------------------------------------
     if (action === "cli_memo_delete") {

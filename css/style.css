@@ -626,6 +626,27 @@
         }
         .fb-search-match { background-color: rgba(99, 179, 237, 0.2); border-radius: 2px; }
 
+        /* =========================================
+           ピンモードボタン
+           ========================================= */
+        .btn-pin { background-color: #4a5568; transition: all 0.2s; }
+        .btn-pin.cli-pin-active {
+            background: linear-gradient(135deg, #d69e2e, #b7791f);
+            color: white; font-weight: bold;
+            box-shadow: 0 0 8px rgba(214, 158, 46, 0.5);
+        }
+
+        /* =========================================
+           下書きバナー
+           ========================================= */
+        .cli-draft-banner {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; background: linear-gradient(135deg, #744210, #5a3e1b);
+            border-bottom: 1px solid #d69e2e;
+            color: #fefcbf; font-size: 0.8rem; flex-shrink: 0;
+        }
+        .cli-draft-banner .btn-tool { font-size: 0.75rem; }
+
         /* パス挿入ボタン */
         .btn-path-browse {
             padding: 10px 12px; background: linear-gradient(135deg, #d69e2e, #b7791f);
