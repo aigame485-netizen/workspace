@@ -67,6 +67,7 @@
         <div class="cli-topbar">
             <button class="cli-btn-menu" onclick="toggleCliSidebar()">☰</button>
             <span class="cli-current-file" id="cli-current-filename">ファイルを選択</span>
+            <button class="cli-charcount-badge" id="cli-charcount-badge" onclick="cliShowCharCountDetail()" title="文字数詳細" style="display:none;">—</button>
             <div style="flex-grow:1;"></div>
             <button class="btn-tool btn-edit" id="cli-btn-edit" onclick="toggleCliEditMode()">📝 編集</button>
             <button class="btn-tool btn-save" id="cli-btn-save" onclick="cliSaveFile()" style="display:none;">💾 保存</button>

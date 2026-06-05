@@ -62,6 +62,9 @@ function toggleCliViewer() {
         cliBtn.classList.remove('active');
         destroyCliEditor();
         closeCliSidebar();
+        // 文字数バッジを非表示
+        const badge = document.getElementById('cli-charcount-badge');
+        if (badge) badge.style.display = 'none';
     }
 }
 
@@ -269,6 +272,7 @@ async function cliOpenFile(path) {
         setTimeout(() => cliEditorInstance.refresh(), 50);
         cliShowDraftBanner(draft.lastFetched);
         cliRenderFileTree(cliFileList);
+        cliUpdateCharCount();
         updateStatus('📝 下書き復元', true);
         return;
     }
@@ -283,6 +287,7 @@ async function cliOpenFile(path) {
 
     closeCliSidebar();
     setTimeout(() => cliEditorInstance.refresh(), 50);
+    cliUpdateCharCount();
 
     // サーバーから最新を取得
     const pass = await getAuthPassword();
@@ -320,6 +325,7 @@ async function cliOpenFile(path) {
             cliOriginalContent = content;
             cliHasUnsavedChanges = false;
             cliUpdateEditButtons();
+            cliUpdateCharCount();
             await cliSaveFileToCache(path, content, json.updatedAt);
             updateStatus('取得完了', true);
         } else {
@@ -801,6 +807,7 @@ function cliOnEditorChange() {
     const currentText = cliEditorInstance.getValue();
     cliHasUnsavedChanges = (currentText !== cliOriginalContent);
     cliUpdateEditButtons();
+    cliUpdateCharCount();
 
     // IndexedDBへ下書き自動保存
     if (cliEditMode && cliCurrentFile) {
@@ -1393,6 +1400,7 @@ async function cliDiscardDraftAndRefresh() {
             cliOriginalContent = content;
             cliHasUnsavedChanges = false;
             cliUpdateEditButtons();
+            cliUpdateCharCount();
             await cliSaveFileToCache(cliCurrentFile, content, json.updatedAt);
             updateStatus('✅ サーバー版に戻しました', true);
         } else {
@@ -1404,4 +1412,68 @@ async function cliDiscardDraftAndRefresh() {
     }
 }
 
-console.log("✅ CLI Viewer モジュール読み込み完了（ピンモード・下書き自動保存・メモ全削除対応）");
+// =========================================
+// 文字数カウント
+// =========================================
+
+/**
+ * 文字数バッジを更新する
+ * エディタの内容から文字数を計算し、バッジに表示する
+ */
+function cliUpdateCharCount() {
+    const badge = document.getElementById('cli-charcount-badge');
+    if (!badge || !cliEditorInstance) return;
+
+    if (!cliCurrentFile) {
+        badge.style.display = 'none';
+        return;
+    }
+
+    const text = cliEditorInstance.getValue();
+    const charCount = text.length;
+
+    // 読みやすい形式に変換（1000以上はK表記）
+    let displayText;
+    if (charCount >= 10000) {
+        displayText = (charCount / 1000).toFixed(1) + 'K字';
+    } else {
+        displayText = charCount.toLocaleString() + '字';
+    }
+
+    badge.textContent = displayText;
+    badge.style.display = 'inline-block';
+}
+
+/**
+ * 文字数の詳細をトースト表示する
+ */
+function cliShowCharCountDetail() {
+    if (!cliEditorInstance || !cliCurrentFile) return;
+
+    const text = cliEditorInstance.getValue();
+    const lines = cliEditorInstance.lineCount();
+    const totalChars = text.length;
+    // 空白・改行を除いた文字数
+    const noSpaceChars = text.replace(/[\s\n\r\t　]/g, '').length;
+
+    // 既存のトーストを削除
+    const existing = document.querySelector('.cli-charcount-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'cli-charcount-toast';
+    toast.innerHTML = `
+        <span class="charcount-label">行数</span> <span class="charcount-value">${lines.toLocaleString()}</span>　
+        <span class="charcount-label">文字数</span> <span class="charcount-value">${totalChars.toLocaleString()}</span>　
+        <span class="charcount-label">空白除</span> <span class="charcount-value">${noSpaceChars.toLocaleString()}</span>
+    `;
+    document.body.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+console.log("✅ CLI Viewer モジュール読み込み完了（ピンモード・下書き自動保存・メモ全削除・文字数カウント対応）");

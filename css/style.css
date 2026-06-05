@@ -667,3 +667,46 @@
         }
         .fb-inserted-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 
+        /* =========================================
+           文字数バッジ
+           ========================================= */
+        .cli-charcount-badge {
+            flex-shrink: 0;
+            background: #2d3748;
+            border: 1px solid #4a5568;
+            color: #a0aec0;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+        .cli-charcount-badge:hover {
+            background: #4a5568;
+            color: #e2e8f0;
+            border-color: #63b3ed;
+        }
+        .cli-charcount-badge:active {
+            transform: scale(0.95);
+        }
+
+        /* 文字数詳細トースト */
+        .cli-charcount-toast {
+            position: fixed; bottom: -80px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, #2d3748, #1a202c);
+            border: 1px solid #4a5568;
+            color: #e2e8f0; padding: 12px 20px; border-radius: 10px;
+            font-size: 0.85rem; z-index: 20000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            transition: bottom 0.3s ease; white-space: nowrap;
+            text-align: center; line-height: 1.6;
+        }
+        .cli-charcount-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+        .cli-charcount-toast .charcount-label {
+            color: #718096; font-size: 0.75rem;
+        }
+        .cli-charcount-toast .charcount-value {
+            color: #63b3ed; font-weight: bold; font-size: 1rem;
+        }
