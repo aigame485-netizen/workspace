@@ -187,11 +187,11 @@ function cliRenderFileTree(files) {
     // フォルダ表示
     Object.keys(folders).sort().forEach(folderName => {
         const folderDiv = document.createElement('div');
-        folderDiv.className = 'cli-folder open';
+        folderDiv.className = 'cli-folder';
 
         const header = document.createElement('div');
         header.className = 'cli-folder-header';
-        header.innerHTML = `📂 ${folderName} <span style="color:#a0aec0; font-weight:normal;">(${folders[folderName].length})</span>`;
+        header.innerHTML = `📁 ${folderName} <span style="color:#a0aec0; font-weight:normal;">(${folders[folderName].length})</span>`;
         header.onclick = () => {
             folderDiv.classList.toggle('open');
             // アイコン切替
