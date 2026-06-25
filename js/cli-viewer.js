@@ -982,6 +982,167 @@ function cliClearInstruction() {
     textarea.value = '';
 }
 
+// --- カーソル位置への共通挿入ヘルパー ---
+function cliInsertIntoInstruction(text) {
+    const textarea = document.getElementById('cli-instruction-content');
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const val = textarea.value;
+
+    // 直前に文字があり、改行で終わっていなければ改行を挟んで見やすくする
+    let insert = text;
+    const before = val.substring(0, start);
+    if (before.length > 0 && !before.endsWith('\n')) {
+        insert = '\n' + insert;
+    }
+
+    textarea.value = before + insert + val.substring(end);
+    const pos = start + insert.length;
+    textarea.selectionStart = textarea.selectionEnd = pos;
+    setTimeout(() => textarea.focus(), 50);
+}
+
+// --- 今開いているファイルのパスを挿入 ---
+function cliInsertCurrentPath() {
+    if (!cliCurrentFile) {
+        alert('開いているファイルがありません。先にファイルを選択してください。');
+        return;
+    }
+    cliInsertIntoInstruction(cliCurrentFile);
+    fbShowInsertToast(cliCurrentFile);
+}
+
+// =========================================
+// 指示テンプレート管理（localStorageに保存）
+// =========================================
+
+const CLI_TEMPLATE_KEY = 'cli_instruction_templates';
+
+// 既定テンプレ（初回のみ投入）
+const CLI_DEFAULT_TEMPLATES = [
+    '上記ファイルを読んで、内容を把握してください。',
+    '以下の指示に従って修正してください：\n・',
+    '誤字脱字・表現の不自然な箇所をチェックして、修正案を出してください。'
+];
+
+function cliGetTemplates() {
+    try {
+        const raw = localStorage.getItem(CLI_TEMPLATE_KEY);
+        if (raw === null) {
+            // 初回：既定テンプレを保存して返す
+            localStorage.setItem(CLI_TEMPLATE_KEY, JSON.stringify(CLI_DEFAULT_TEMPLATES));
+            return [...CLI_DEFAULT_TEMPLATES];
+        }
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function cliSaveTemplates(arr) {
+    try {
+        localStorage.setItem(CLI_TEMPLATE_KEY, JSON.stringify(arr));
+    } catch (e) {
+        alert('テンプレの保存に失敗しました: ' + e.message);
+    }
+}
+
+// ポップの開閉
+function cliToggleTemplatePopup() {
+    const popup = document.getElementById('cli-template-popup');
+    if (!popup) return;
+    const willShow = (popup.style.display === 'none' || popup.style.display === '');
+    popup.style.display = willShow ? 'flex' : 'none';
+    if (willShow) cliRenderTemplates();
+}
+
+// テンプレ一覧の描画
+function cliRenderTemplates() {
+    const listEl = document.getElementById('cli-template-list');
+    if (!listEl) return;
+
+    const templates = cliGetTemplates();
+    listEl.innerHTML = '';
+
+    if (templates.length === 0) {
+        listEl.innerHTML = '<div class="cli-template-empty">テンプレがありません。下で登録してください。</div>';
+        return;
+    }
+
+    templates.forEach((tpl, idx) => {
+        const row = document.createElement('div');
+        row.className = 'cli-template-item';
+
+        const insertBtn = document.createElement('button');
+        insertBtn.className = 'tmpl-insert';
+        insertBtn.textContent = tpl;
+        insertBtn.title = 'クリックで指示パッドに挿入';
+        insertBtn.addEventListener('click', () => cliInsertTemplate(idx));
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'tmpl-del';
+        delBtn.textContent = '🗑️';
+        delBtn.title = 'このテンプレを削除';
+        delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            cliDeleteTemplate(idx);
+        });
+
+        row.appendChild(insertBtn);
+        row.appendChild(delBtn);
+        listEl.appendChild(row);
+    });
+}
+
+// テンプレを指示パッドへ挿入
+function cliInsertTemplate(idx) {
+    const templates = cliGetTemplates();
+    const tpl = templates[idx];
+    if (tpl === undefined) return;
+    cliInsertIntoInstruction(tpl);
+    cliToggleTemplatePopup(); // 挿入したら閉じる
+}
+
+// 入力欄から新規登録
+function cliRegisterTemplate() {
+    const input = document.getElementById('cli-template-input');
+    const text = input.value.trim();
+    if (!text) {
+        alert('登録するテンプレ文を入力してください。');
+        return;
+    }
+    const templates = cliGetTemplates();
+    templates.push(text);
+    cliSaveTemplates(templates);
+    input.value = '';
+    cliRenderTemplates();
+}
+
+// 指示パッドの現在内容をテンプレ登録
+function cliRegisterTemplateFromInstruction() {
+    const text = document.getElementById('cli-instruction-content').value.trim();
+    if (!text) {
+        alert('指示パッドが空です。');
+        return;
+    }
+    const templates = cliGetTemplates();
+    templates.push(text);
+    cliSaveTemplates(templates);
+    cliRenderTemplates();
+}
+
+// テンプレ削除
+function cliDeleteTemplate(idx) {
+    const templates = cliGetTemplates();
+    if (templates[idx] === undefined) return;
+    const preview = templates[idx].length > 20 ? templates[idx].slice(0, 20) + '…' : templates[idx];
+    if (!confirm(`このテンプレを削除しますか？\n\n「${preview}」`)) return;
+    templates.splice(idx, 1);
+    cliSaveTemplates(templates);
+    cliRenderTemplates();
+}
+
 function showCliCopyToast() {
     const existing = document.querySelector('.cli-copy-toast');
     if (existing) existing.remove();

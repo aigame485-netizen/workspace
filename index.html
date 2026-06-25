@@ -127,8 +127,26 @@
                         <textarea id="cli-instruction-content" class="input-text" rows="4" placeholder="AIへの指示をここに書き溜める...&#10;長押しで行テキストを挿入できます"></textarea>
                         <div class="cli-instruction-actions">
                             <button class="btn-path-browse" onclick="cliOpenFolderBrowser()">📂 パス</button>
-                            <button class="btn-copy" onclick="cliCopyInstruction()">📋 コピー</button>
+                            <button class="btn-path-current" onclick="cliInsertCurrentPath()" title="今開いているファイルのパスを挿入">📄 現ファイル</button>
+                            <button class="btn-template" onclick="cliToggleTemplatePopup()" title="テンプレ文の挿入・管理">📌 テンプレ</button>
+                            <button class="btn-copy" onclick="cliCopyInstruction()" title="クリップボードにコピー">📋</button>
                             <button class="btn-clear" onclick="cliClearInstruction()">消去</button>
+                        </div>
+
+                        <!-- テンプレ管理ポップ -->
+                        <div id="cli-template-popup" class="cli-template-popup" style="display:none;">
+                            <div class="cli-template-popup-header">
+                                <span>📌 テンプレート</span>
+                                <button class="cli-template-close" onclick="cliToggleTemplatePopup()">✕</button>
+                            </div>
+                            <div class="cli-template-list" id="cli-template-list"></div>
+                            <div class="cli-template-register">
+                                <textarea id="cli-template-input" placeholder="新しいテンプレ文を入力..." rows="2"></textarea>
+                                <div class="cli-template-register-actions">
+                                    <button class="btn-tmpl-add" onclick="cliRegisterTemplate()">＋ 登録</button>
+                                    <button class="btn-tmpl-fromtext" onclick="cliRegisterTemplateFromInstruction()" title="指示パッドの現在の内容をテンプレ登録">指示内容から</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
