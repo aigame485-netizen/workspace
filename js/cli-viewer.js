@@ -18,6 +18,7 @@ let cliActiveTab = 'memo';         // 'memo' | 'instruction'
 let cliPinMode = false;            // ピンモード（タップで行をメモに転記）
 let cliPinTouchMoved = false;      // ピンモード: タッチ中にmoveしたか
 let cliDraftSaveTimer = null;      // 下書き自動保存タイマー
+let cliPendingServerContent = null; // サーバー側の新しい内容（更新バナー表示中）
 
 // =========================================
 // モード切替
@@ -146,6 +147,11 @@ async function cliRefreshFiles() {
             await cliSaveFileListToCache(cliFileList);
             cliRenderFileTree(cliFileList);
             updateStatus('CLI一覧取得完了', true);
+
+            // 開いているファイルも最新に更新
+            if (cliCurrentFile) {
+                await cliRefreshCurrentFile();
+            }
         } else {
             if (json.message && json.message.includes("合言葉")) await clearAuthPassword();
             throw new Error(json.message);
@@ -321,13 +327,29 @@ async function cliOpenFile(path) {
                 // JSONでなければ平文としてそのまま使う
             }
 
-            cliEditorInstance.setValue(content);
-            cliOriginalContent = content;
-            cliHasUnsavedChanges = false;
-            cliUpdateEditButtons();
-            cliUpdateCharCount();
-            await cliSaveFileToCache(path, content, json.updatedAt);
-            updateStatus('取得完了', true);
+            if (cached && cached.content === content) {
+                // キャッシュと同一 → 表示はそのまま、メタデータだけ更新
+                cliOriginalContent = content;
+                cliHasUnsavedChanges = false;
+                cliUpdateEditButtons();
+                await cliSaveFileToCache(path, content, json.updatedAt);
+                updateStatus('取得完了', true);
+            } else if (!cached) {
+                // キャッシュ無し → サーバー版を直接表示
+                cliEditorInstance.setValue(content);
+                cliOriginalContent = content;
+                cliHasUnsavedChanges = false;
+                cliUpdateEditButtons();
+                cliUpdateCharCount();
+                await cliSaveFileToCache(path, content, json.updatedAt);
+                updateStatus('取得完了', true);
+            } else {
+                // キャッシュと内容が違う → 勝手に差し替えず更新バナーで通知
+                cliPendingServerContent = content;
+                await cliSaveFileToCache(path, content, json.updatedAt);
+                cliShowUpdateBanner();
+                updateStatus('📥 新バージョンあり', true);
+            }
         } else {
             throw new Error(json.message);
         }
@@ -1217,7 +1239,16 @@ async function fbFetchTree() {
                 }
             } catch (_) {}
 
-            fbTreeData = JSON.parse(content);
+            const newData = JSON.parse(content);
+
+            // キャッシュから表示済みでデータ同一なら再描画スキップ（展開状態を保持）
+            if (fbTreeData && JSON.stringify(fbTreeData.tree) === JSON.stringify(newData.tree)) {
+                fbTreeData = newData;
+                fbTreeFlat = fbFlattenTree(fbTreeData.tree);
+                return;
+            }
+
+            fbTreeData = newData;
             fbTreeFlat = fbFlattenTree(fbTreeData.tree);
             fbRenderTree(fbTreeData.tree, treeEl);
         } else {
@@ -1637,4 +1668,100 @@ function cliShowCharCountDetail() {
     }, 3000);
 }
 
-console.log("✅ CLI Viewer モジュール読み込み完了（ピンモード・下書き自動保存・メモ全削除・文字数カウント対応）");
+// =========================================
+// 更新通知バナー制御
+// =========================================
+
+function cliShowUpdateBanner() {
+    const banner = document.getElementById('cli-update-banner');
+    if (banner) banner.style.display = 'flex';
+}
+
+function cliDismissUpdateBanner() {
+    const banner = document.getElementById('cli-update-banner');
+    if (banner) banner.style.display = 'none';
+    cliPendingServerContent = null;
+}
+
+function cliApplyServerUpdate() {
+    if (!cliPendingServerContent || !cliEditorInstance) return;
+
+    // 編集中は確認ダイアログ
+    if (cliEditMode) {
+        if (!confirm('編集中の内容がサーバー版に置き換わります。よろしいですか？')) return;
+    }
+
+    const scrollInfo = cliEditorInstance.getScrollInfo();
+    cliEditorInstance.setValue(cliPendingServerContent);
+    cliOriginalContent = cliPendingServerContent;
+    cliHasUnsavedChanges = false;
+    cliUpdateEditButtons();
+    cliUpdateCharCount();
+    cliEditorInstance.scrollTo(scrollInfo.left, scrollInfo.top);
+    cliPendingServerContent = null;
+    cliDismissUpdateBanner();
+    updateStatus('✅ 最新版に更新', true);
+}
+
+// =========================================
+// 🔄ボタンで開いているファイルの内容も更新
+// =========================================
+
+async function cliRefreshCurrentFile() {
+    if (!cliCurrentFile || !cliEditorInstance) return;
+
+    const pass = await getAuthPassword();
+    if (!pass) return;
+
+    try {
+        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(cliCurrentFile)}`;
+        const res = await fetch(url, { method: 'POST' });
+        const json = await res.json();
+
+        if (json.status === 'success') {
+            let content = json.content;
+
+            try {
+                const parsed = JSON.parse(content);
+                if (parsed && parsed.encrypted) {
+                    const encKey = await getEncryptionKey();
+                    if (!encKey) return;
+                    try {
+                        content = await decryptData(parsed, encKey);
+                    } catch (_) { return; }
+                }
+            } catch (_) { }
+
+            const currentContent = cliEditorInstance.getValue();
+            if (currentContent === content) {
+                await cliSaveFileToCache(cliCurrentFile, content, json.updatedAt);
+                return;
+            }
+
+            if (cliEditMode) {
+                // 編集中 → バナーで通知のみ（直接上書きしない）
+                cliPendingServerContent = content;
+                await cliSaveFileToCache(cliCurrentFile, content, json.updatedAt);
+                cliShowUpdateBanner();
+                updateStatus('📥 新バージョンあり', true);
+            } else {
+                // 閲覧中 → スクロール位置を保持しつつ直接更新
+                const scrollInfo = cliEditorInstance.getScrollInfo();
+                cliEditorInstance.setValue(content);
+                cliOriginalContent = content;
+                cliHasUnsavedChanges = false;
+                cliUpdateEditButtons();
+                cliUpdateCharCount();
+                cliEditorInstance.scrollTo(scrollInfo.left, scrollInfo.top);
+                await cliSaveFileToCache(cliCurrentFile, content, json.updatedAt);
+                cliPendingServerContent = null;
+                cliDismissUpdateBanner();
+                updateStatus('✅ ファイル内容を更新', true);
+            }
+        }
+    } catch (_) {
+        // ファイル一覧更新は成功しているので、内容取得失敗は無視
+    }
+}
+
+console.log("✅ CLI Viewer モジュール読み込み完了（ピンモード・下書き自動保存・メモ全削除・文字数カウント・更新通知対応）");

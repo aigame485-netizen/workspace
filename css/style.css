@@ -731,6 +731,15 @@
         }
         .cli-draft-banner .btn-tool { font-size: 0.75rem; }
 
+        /* サーバー更新通知バナー */
+        .cli-update-banner {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; background: linear-gradient(135deg, #1a365d, #2a4365);
+            border-bottom: 1px solid #63b3ed;
+            color: #bee3f8; font-size: 0.8rem; flex-shrink: 0;
+        }
+        .cli-update-banner .btn-tool { font-size: 0.75rem; }
+
         /* パス挿入ボタン */
         .btn-path-browse {
             padding: 10px 12px; background: linear-gradient(135deg, #d69e2e, #b7791f);

@@ -99,6 +99,12 @@
                 <button class="btn-tool" onclick="cliDiscardDraftAndRefresh()">🔄 サーバー版</button>
                 <button class="btn-tool" onclick="cliDismissDraftBanner()">✕</button>
             </div>
+            <div class="cli-update-banner" id="cli-update-banner" style="display:none;">
+                <span>📥 サーバーに新しいバージョンがあります</span>
+                <div style="flex-grow:1;"></div>
+                <button class="btn-tool" onclick="cliApplyServerUpdate()">🔄 更新</button>
+                <button class="btn-tool" onclick="cliDismissUpdateBanner()">✕</button>
+            </div>
             <div class="cli-viewer-area" id="cli-viewer-area">
                 <textarea id="cli-viewer-textarea" style="display:none;"></textarea>
             </div>
