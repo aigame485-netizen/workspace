@@ -826,3 +826,96 @@
         .cli-charcount-toast .charcount-value {
             color: #63b3ed; font-weight: bold; font-size: 1rem;
         }
+
+        /* =========================================
+           提案ビューア
+           ========================================= */
+
+        /* バッジ（タブの未読数） */
+        .cli-proposals-badge {
+            display: inline-block; min-width: 16px; height: 16px;
+            background: #e53e3e; color: white;
+            font-size: 0.65rem; font-weight: bold;
+            border-radius: 8px; text-align: center; line-height: 16px;
+            margin-left: 4px; padding: 0 4px;
+        }
+
+        /* 提案コンテナ */
+        .cli-proposals-container {
+            max-height: 45vh; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .cli-proposals-empty {
+            text-align: center; color: #718096; padding: 20px; font-size: 0.85rem;
+        }
+
+        /* 提案セット（1回の提案実行分） */
+        .cli-proposal-set {
+            background: #1a202c; border: 1px solid #4a5568;
+            border-radius: 8px; overflow: hidden;
+        }
+        .cli-proposal-set-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; background: #2d3748; cursor: pointer;
+            font-size: 0.8rem; color: #cbd5e0;
+        }
+        .cli-proposal-set-header:active { background: #4a5568; }
+        .cli-proposal-set-title {
+            flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-weight: bold; color: #ecc94b;
+        }
+        .cli-proposal-set-arrow {
+            color: #718096; font-size: 0.7rem; transition: transform 0.2s; flex-shrink: 0;
+        }
+        .cli-proposal-set.open .cli-proposal-set-arrow { transform: rotate(90deg); }
+        .cli-proposal-set-body { display: none; }
+        .cli-proposal-set.open .cli-proposal-set-body { display: block; }
+
+        /* 前後の文脈表示 */
+        .cli-proposal-context {
+            padding: 6px 12px; font-size: 0.75rem; color: #a0aec0;
+            background: rgba(45, 55, 72, 0.5);
+            border-bottom: 1px dashed #4a5568;
+            font-style: italic;
+        }
+        .cli-proposal-context-after {
+            border-bottom: none; border-top: 1px dashed #4a5568;
+        }
+
+        /* 個別の案カード */
+        .cli-proposal-card {
+            padding: 10px 12px; border-bottom: 1px solid #2d3748;
+            cursor: pointer; transition: background 0.15s;
+            display: flex; align-items: flex-start; gap: 8px;
+        }
+        .cli-proposal-card:last-child { border-bottom: none; }
+        .cli-proposal-card:hover { background: #2d3748; }
+        .cli-proposal-card:active { background: #2b6cb0; }
+        .cli-proposal-num {
+            flex-shrink: 0; width: 22px; height: 22px;
+            background: #4a5568; color: #e2e8f0;
+            border-radius: 50%; text-align: center; line-height: 22px;
+            font-size: 0.7rem; font-weight: bold;
+        }
+        .cli-proposal-card:hover .cli-proposal-num { background: #63b3ed; }
+        .cli-proposal-text {
+            flex: 1; font-size: 0.82rem; color: #e2e8f0;
+            line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+            max-height: 4.5em; overflow-y: auto;
+        }
+        .cli-proposal-insert-hint {
+            flex-shrink: 0; font-size: 0.7rem; color: #48bb78;
+            align-self: center; opacity: 0; transition: opacity 0.15s;
+        }
+        .cli-proposal-card:hover .cli-proposal-insert-hint { opacity: 1; }
+
+        /* 提案挿入トースト */
+        .cli-proposal-toast {
+            position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, #38a169, #2f855a);
+            color: white; padding: 12px 24px; border-radius: 8px;
+            font-size: 0.9rem; font-weight: bold; z-index: 20000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: bottom 0.3s ease; white-space: nowrap;
+        }
+        .cli-proposal-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }

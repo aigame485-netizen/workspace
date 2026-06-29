@@ -1098,6 +1098,12 @@ function cliSwitchTab(tabName) {
     // コンテンツの表示切替
     document.getElementById('cli-tab-memo').classList.toggle('active', tabName === 'memo');
     document.getElementById('cli-tab-instruction').classList.toggle('active', tabName === 'instruction');
+    document.getElementById('cli-tab-proposals').classList.toggle('active', tabName === 'proposals');
+
+    // 提案タブ初回表示時に自動読み込み
+    if (tabName === 'proposals' && !cliProposalsLoaded) {
+        cliRefreshProposals();
+    }
 
     // CodeMirrorのサイズ再計算
     if (cliEditorInstance) setTimeout(() => cliEditorInstance.refresh(), 100);
@@ -1893,4 +1899,257 @@ async function cliRefreshCurrentFile() {
     }
 }
 
-console.log("✅ CLI Viewer モジュール読み込み完了（ピンモード・下書き自動保存・メモ全削除・文字数カウント・更新通知対応）");
+// =========================================
+// 提案ビューア（8案提案のスマホ表示・直接挿入）
+// =========================================
+
+let cliProposalsData = [];    // { path, data } の配列
+let cliProposalsLoaded = false;
+
+async function cliRefreshProposals() {
+    const container = document.getElementById('cli-proposals-container');
+    container.innerHTML = '<div class="cli-proposals-empty">🔄 提案を読み込み中...</div>';
+
+    const pass = await getAuthPassword();
+    if (!pass) return;
+
+    try {
+        updateStatus('提案取得中...', false);
+        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_list`;
+        const res = await fetch(url, { method: 'POST' });
+        const json = await res.json();
+
+        if (json.status !== 'success') throw new Error(json.message);
+
+        // _proposals/ プレフィックスのファイルを抽出
+        const proposalFiles = (json.files || []).filter(f => f.path.startsWith('_proposals/'));
+
+        if (proposalFiles.length === 0) {
+            cliProposalsData = [];
+            cliProposalsLoaded = true;
+            cliRenderProposals();
+            cliUpdateProposalsBadge();
+            updateStatus('Ready', true);
+            return;
+        }
+
+        // 各ファイルをダウンロード＆パース
+        cliProposalsData = [];
+        for (const f of proposalFiles) {
+            try {
+                const dlUrl = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(f.path)}`;
+                const dlRes = await fetch(dlUrl, { method: 'POST' });
+                const dlJson = await dlRes.json();
+
+                if (dlJson.status === 'success') {
+                    let content = dlJson.content;
+
+                    // 暗号化の復号
+                    try {
+                        const parsed = JSON.parse(content);
+                        if (parsed && parsed.encrypted) {
+                            const encKey = await getEncryptionKey();
+                            if (encKey) {
+                                content = await decryptData(parsed, encKey);
+                            } else {
+                                continue;
+                            }
+                        }
+                    } catch (_) {}
+
+                    const data = JSON.parse(content);
+                    if (data.type === 'proposals') {
+                        cliProposalsData.push({ path: f.path, data: data });
+                    }
+                }
+            } catch (_) { /* 個別ファイルのエラーはスキップ */ }
+        }
+
+        cliProposalsLoaded = true;
+        cliRenderProposals();
+        cliUpdateProposalsBadge();
+        updateStatus('Ready', true);
+
+    } catch (e) {
+        container.innerHTML = `<div class="cli-proposals-empty" style="color:#f56565;">エラー: ${e.message}</div>`;
+        updateStatus('提案取得失敗', false, true);
+    }
+}
+
+function cliRenderProposals() {
+    const container = document.getElementById('cli-proposals-container');
+    container.innerHTML = '';
+
+    // 全setsをフラット化（新しい順）
+    const allSets = [];
+    for (const pf of cliProposalsData) {
+        for (const set of (pf.data.sets || [])) {
+            allSets.push({ ...set, _filePath: pf.path, _created: pf.data.created });
+        }
+    }
+
+    if (allSets.length === 0) {
+        container.innerHTML = '<div class="cli-proposals-empty">💡 提案データがありません<br><span style="font-size:0.75rem;">PCから8案提案を実行してください</span></div>';
+        return;
+    }
+
+    // 新しい順にソート
+    allSets.sort((a, b) => (b._created || '').localeCompare(a._created || ''));
+
+    allSets.forEach((set, setIdx) => {
+        const setDiv = document.createElement('div');
+        setDiv.className = 'cli-proposal-set open'; // デフォルト展開
+
+        // ヘッダー
+        const header = document.createElement('div');
+        header.className = 'cli-proposal-set-header';
+
+        const sourceLabel = (set.source || '').split('/').pop() || '提案';
+        const markerLabel = set.marker ? ` — ${set.marker}` : '';
+        header.innerHTML = `
+            <span class="cli-proposal-set-arrow">▶</span>
+            <span class="cli-proposal-set-title">💡 ${sourceLabel}${markerLabel}</span>
+            <span style="font-size:0.7rem; color:#718096;">${set.proposals ? set.proposals.length + '案' : ''}</span>
+        `;
+        header.onclick = () => setDiv.classList.toggle('open');
+
+        // ボディ
+        const body = document.createElement('div');
+        body.className = 'cli-proposal-set-body';
+
+        // 前の文脈
+        if (set.context_before) {
+            const ctxBefore = document.createElement('div');
+            ctxBefore.className = 'cli-proposal-context';
+            ctxBefore.textContent = '前: ' + set.context_before;
+            body.appendChild(ctxBefore);
+        }
+
+        // 各案カード
+        if (set.proposals) {
+            set.proposals.forEach((p) => {
+                const card = document.createElement('div');
+                card.className = 'cli-proposal-card';
+
+                card.innerHTML = `
+                    <span class="cli-proposal-num">${p.id}</span>
+                    <span class="cli-proposal-text">${escapeHtml(p.text)}</span>
+                    <span class="cli-proposal-insert-hint">挿入▶</span>
+                `;
+
+                card.onclick = () => cliInsertProposal(p.text, p.id);
+                body.appendChild(card);
+            });
+        }
+
+        // 後の文脈
+        if (set.context_after) {
+            const ctxAfter = document.createElement('div');
+            ctxAfter.className = 'cli-proposal-context cli-proposal-context-after';
+            ctxAfter.textContent = '後: ' + set.context_after;
+            body.appendChild(ctxAfter);
+        }
+
+        setDiv.appendChild(header);
+        setDiv.appendChild(body);
+        container.appendChild(setDiv);
+    });
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function cliInsertProposal(text, proposalId) {
+    if (!cliCurrentFile) {
+        alert('先にファイルを開いてから案を挿入してください');
+        return;
+    }
+    if (!cliEditorInstance) return;
+
+    // 編集モードでなければ自動で切り替え
+    if (!cliEditMode) {
+        if (cliImageMode) {
+            alert('画像ファイルには挿入できません');
+            return;
+        }
+        cliEnterEditMode();
+    }
+
+    // カーソル位置に挿入
+    cliEditorInstance.replaceSelection(text);
+    cliEditorInstance.focus();
+
+    // トースト表示
+    cliShowProposalToast(proposalId);
+}
+
+function cliShowProposalToast(proposalId) {
+    const existing = document.querySelector('.cli-proposal-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'cli-proposal-toast';
+    toast.textContent = `✅ 案${proposalId}を挿入しました`;
+    document.body.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2000);
+}
+
+async function cliDeleteAllProposals() {
+    if (cliProposalsData.length === 0) {
+        alert('削除する提案がありません');
+        return;
+    }
+    if (!confirm(`提案を全て削除しますか？（${cliProposalsData.length}ファイル）`)) return;
+
+    const pass = await getAuthPassword();
+    if (!pass) return;
+
+    try {
+        updateStatus('提案削除中...', false);
+
+        const paths = cliProposalsData.map(p => p.path);
+        for (const path of paths) {
+            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=${encodeURIComponent(path)}`;
+            await fetch(url, { method: 'POST' });
+        }
+
+        // ファイル一覧のキャッシュからも除去
+        cliFileList = cliFileList.filter(f => !f.path.startsWith('_proposals/'));
+
+        cliProposalsData = [];
+        cliRenderProposals();
+        cliUpdateProposalsBadge();
+        updateStatus('提案削除完了', true);
+        alert(`${paths.length}件の提案を削除しました`);
+    } catch (e) {
+        alert('提案削除失敗: ' + e.message);
+        updateStatus('提案削除失敗', false, true);
+    }
+}
+
+function cliUpdateProposalsBadge() {
+    const badge = document.getElementById('cli-proposals-badge');
+    if (!badge) return;
+
+    let total = 0;
+    for (const pf of cliProposalsData) {
+        total += (pf.data.sets || []).length;
+    }
+
+    if (total > 0) {
+        badge.textContent = total;
+        badge.style.display = 'inline-block';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+console.log("✅ CLI Viewer モジュール読み込み完了（ピンモード・下書き自動保存・メモ全削除・文字数カウント・更新通知・提案ビューア対応）");
