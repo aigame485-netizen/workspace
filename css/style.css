@@ -529,8 +529,7 @@
             border: 1px solid #4a5568; border-radius: 6px; cursor: pointer;
             padding: 8px 10px; font-size: 0.82rem; line-height: 1.35;
             white-space: pre-wrap; word-break: break-word;
-            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-            overflow: hidden;
+            max-height: 4.5em; overflow-y: auto;
         }
         .cli-template-item .tmpl-insert:hover { background: #3a4658; border-color: #ed8936; }
         .cli-template-item .tmpl-insert:active { transform: scale(0.99); }
