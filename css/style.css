@@ -856,12 +856,14 @@
         }
         .cli-proposals-empty {
             text-align: center; color: #718096; padding: 20px; font-size: 0.85rem;
+            flex-shrink: 0;
         }
 
         /* 提案セット（1回の提案実行分） */
         .cli-proposal-set {
             background: #1a202c; border: 1px solid #4a5568;
             border-radius: 8px; overflow: hidden;
+            flex-shrink: 0;
         }
         .cli-proposal-set-header {
             display: flex; align-items: center; gap: 8px;
