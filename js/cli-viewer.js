@@ -250,12 +250,28 @@ function cliRenderFileTree(files) {
 
         const header = document.createElement('div');
         header.className = 'cli-folder-header';
-        header.innerHTML = `📁 ${folderName} <span style="color:#a0aec0; font-weight:normal;">(${folders[folderName].length})</span>`;
-        header.onclick = () => {
+
+        const headerLabel = document.createElement('span');
+        headerLabel.style.cssText = 'flex:1; overflow:hidden; text-overflow:ellipsis;';
+        headerLabel.innerHTML = `📁 ${folderName} <span style="color:#a0aec0; font-weight:normal;">(${folders[folderName].length})</span>`;
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'cli-folder-delete';
+        deleteBtn.textContent = '🗑';
+        deleteBtn.title = 'フォルダごと削除';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            cliDeleteFolder(folderName, folders[folderName]);
+        };
+
+        header.appendChild(headerLabel);
+        header.appendChild(deleteBtn);
+
+        header.onclick = (e) => {
+            if (e.target === deleteBtn) return;
             folderDiv.classList.toggle('open');
-            // アイコン切替
             const icon = folderDiv.classList.contains('open') ? '📂' : '📁';
-            header.innerHTML = `${icon} ${folderName} <span style="color:#a0aec0; font-weight:normal;">(${folders[folderName].length})</span>`;
+            headerLabel.innerHTML = `${icon} ${folderName} <span style="color:#a0aec0; font-weight:normal;">(${folders[folderName].length})</span>`;
         };
 
         const filesDiv = document.createElement('div');
@@ -520,6 +536,47 @@ async function cliDeleteFile(path) {
         }
     } catch (e) {
         alert('削除失敗: ' + e.message);
+        updateStatus('削除失敗', false, true);
+    }
+}
+
+async function cliDeleteFolder(folderName, files) {
+    if (!confirm(`「${folderName}」フォルダ内の${files.length}ファイルを全て削除しますか？`)) return;
+
+    const pass = await getAuthPassword();
+    if (!pass) return;
+
+    try {
+        updateStatus(`${folderName} 削除中...`, false);
+        let deleted = 0;
+
+        for (const f of files) {
+            try {
+                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=${encodeURIComponent(f.path)}`;
+                const res = await fetch(url, { method: 'POST' });
+                const json = await res.json();
+                if (json.status === 'success') {
+                    deleted++;
+                    if (cliCurrentFile === f.path) {
+                        cliCurrentFile = null;
+                        if (cliEditorInstance) cliEditorInstance.setValue('');
+                        document.getElementById('cli-current-filename').textContent = 'ファイルを選択';
+                    }
+                    await cliDeleteCachedFile(f.path);
+                }
+            } catch (_) {}
+        }
+
+        cliFileList = cliFileList.filter(f => {
+            const folder = f.path.split('/').slice(0, -1).join('/');
+            return folder !== folderName;
+        });
+        cliRenderFileTree(cliFileList);
+
+        updateStatus('削除完了', true);
+        alert(`${deleted}件のファイルを削除しました`);
+    } catch (e) {
+        alert('フォルダ削除失敗: ' + e.message);
         updateStatus('削除失敗', false, true);
     }
 }

@@ -406,6 +406,13 @@
             font-size: 0.9rem; padding: 2px 6px; opacity: 0.6;
         }
         .cli-file-delete:hover { opacity: 1; }
+        .cli-folder-delete {
+            background: none; border: none; color: #fc8181; cursor: pointer;
+            font-size: 0.8rem; padding: 2px 8px; opacity: 0;
+            transition: opacity 0.15s; margin-left: auto; flex-shrink: 0;
+        }
+        .cli-folder-header:hover .cli-folder-delete { opacity: 0.7; }
+        .cli-folder-delete:hover { opacity: 1 !important; }
 
         /* メインエリア */
         .cli-main {
@@ -842,8 +849,10 @@
 
         /* 提案コンテナ */
         .cli-proposals-container {
-            max-height: 45vh; overflow-y: auto;
+            max-height: 55vh; overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
             display: flex; flex-direction: column; gap: 12px;
+            overscroll-behavior: contain;
         }
         .cli-proposals-empty {
             text-align: center; color: #718096; padding: 20px; font-size: 0.85rem;
@@ -901,7 +910,6 @@
         .cli-proposal-text {
             flex: 1; font-size: 0.82rem; color: #e2e8f0;
             line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-            max-height: 4.5em; overflow-y: auto;
         }
         .cli-proposal-insert-hint {
             flex-shrink: 0; font-size: 0.7rem; color: #48bb78;
