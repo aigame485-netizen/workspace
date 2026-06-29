@@ -344,7 +344,9 @@
             padding: 6px 10px; background-color: #171923;
             border-bottom: 1px solid #4a5568; flex-shrink: 0;
             height: 40px;
+            overflow-x: auto; white-space: nowrap;
         }
+        .cli-topbar::-webkit-scrollbar { display: none; }
         .cli-current-file {
             font-size: 0.9rem; color: #63b3ed; font-weight: bold;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
