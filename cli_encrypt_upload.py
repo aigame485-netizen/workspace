@@ -6,9 +6,12 @@ CLI暗号化アップロードスクリプト
   単体ファイル:
     py cli_encrypt_upload.py <GAS_URL> <AUTH> <FILE_PATH> <UPLOAD_PATH> [ENC_KEY]
 
-  フォルダ一括（.md/.txt のみ、1ファイル200KB上限）:
+  フォルダ一括（.md/.txt + .png/.jpg/.jpeg対応）:
     py cli_encrypt_upload.py <GAS_URL> <AUTH> <FOLDER_PATH> <UPLOAD_PREFIX> [ENC_KEY]
     例: py cli_encrypt_upload.py URL AUTH ./ピリカ2回目 ピリカ2回目 ENC_KEY
+
+  画像ファイルはbase64エンコードしてJSON包装でアップロードされる。
+  ビューア側で自動的に画像として表示される。
 """
 import sys
 import os
@@ -19,8 +22,17 @@ import urllib.request
 import urllib.parse
 from Crypto.Cipher import AES
 
-MAX_FILE_SIZE = 200 * 1024  # 200KB
-ALLOWED_EXTENSIONS = {'.md', '.txt'}
+MAX_TEXT_SIZE = 200 * 1024   # テキスト: 200KB
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 画像: 5MB
+ALLOWED_TEXT_EXTENSIONS = {'.md', '.txt'}
+ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
+ALLOWED_EXTENSIONS = ALLOWED_TEXT_EXTENSIONS | ALLOWED_IMAGE_EXTENSIONS
+
+MIME_MAP = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+}
 
 def derive_key(passphrase: str, salt: bytes) -> bytes:
     return hashlib.pbkdf2_hmac('sha256', passphrase.encode('utf-8'), salt, 100000, dklen=32)
@@ -44,9 +56,28 @@ def encrypt(plaintext: str, passphrase: str) -> dict:
         "data": base64.b64encode(combined).decode('ascii')
     }
 
+def is_image_file(file_path: str) -> bool:
+    ext = os.path.splitext(file_path)[1].lower()
+    return ext in ALLOWED_IMAGE_EXTENSIONS
+
+def read_as_image_json(file_path: str) -> str:
+    """画像ファイルをbase64エンコードしてJSON文字列として返す"""
+    ext = os.path.splitext(file_path)[1].lower()
+    mime = MIME_MAP.get(ext, 'application/octet-stream')
+    with open(file_path, 'rb') as f:
+        raw = f.read()
+    b64 = base64.b64encode(raw).decode('ascii')
+    envelope = {"type": "image", "mimeType": mime, "data": b64}
+    return json.dumps(envelope)
+
 def upload(gas_url: str, auth: str, file_path: str, upload_path: str, enc_key: str = None):
-    with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
+    if is_image_file(file_path):
+        content = read_as_image_json(file_path)
+        file_size = os.path.getsize(file_path)
+        print(f"  画像読み込み完了 ({file_size // 1024}KB)")
+    else:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
 
     if enc_key:
         encrypted = encrypt(content, enc_key)
@@ -70,8 +101,8 @@ def upload(gas_url: str, auth: str, file_path: str, upload_path: str, enc_key: s
 
     return result
 
-def collect_text_files(folder_path: str):
-    """フォルダ内の .md / .txt ファイルを再帰的に収集する"""
+def collect_files(folder_path: str):
+    """フォルダ内の対象ファイルを再帰的に収集する"""
     files = []
     for root, dirs, filenames in os.walk(folder_path):
         for fname in filenames:
@@ -80,18 +111,20 @@ def collect_text_files(folder_path: str):
                 continue
             full_path = os.path.join(root, fname)
             size = os.path.getsize(full_path)
-            if size > MAX_FILE_SIZE:
-                print(f"  ⚠ スキップ（サイズ超過 {size//1024}KB > {MAX_FILE_SIZE//1024}KB）: {fname}")
+            max_size = MAX_IMAGE_SIZE if ext in ALLOWED_IMAGE_EXTENSIONS else MAX_TEXT_SIZE
+            if size > max_size:
+                print(f"  ⚠ スキップ（サイズ超過 {size//1024}KB > {max_size//1024}KB）: {fname}")
                 continue
             rel_path = os.path.relpath(full_path, folder_path)
             files.append((full_path, rel_path))
     return files
 
 def upload_folder(gas_url: str, auth: str, folder_path: str, upload_prefix: str, enc_key: str = None):
-    """フォルダ内のテキストファイルを一括アップロード"""
-    files = collect_text_files(folder_path)
+    """フォルダ内の対象ファイルを一括アップロード"""
+    files = collect_files(folder_path)
     if not files:
-        print("アップロード対象のファイルがありません（.md / .txt のみ対象）")
+        print("アップロード対象のファイルがありません")
+        print(f"  対象: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
         return
 
     print(f"対象ファイル: {len(files)}件")
@@ -137,8 +170,8 @@ if __name__ == '__main__':
         print(f"📂 フォルダアップロード: {file_path}")
         if enc_key:
             print(f"  暗号化: 有効")
-        print(f"  対象拡張子: {', '.join(ALLOWED_EXTENSIONS)}")
-        print(f"  サイズ上限: {MAX_FILE_SIZE // 1024}KB/ファイル")
+        print(f"  対象拡張子: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
+        print(f"  サイズ上限: テキスト {MAX_TEXT_SIZE // 1024}KB / 画像 {MAX_IMAGE_SIZE // (1024*1024)}MB")
         print()
         upload_folder(gas_url, auth, file_path, upload_path, enc_key)
     else:

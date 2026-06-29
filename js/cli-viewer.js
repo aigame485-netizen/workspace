@@ -19,6 +19,8 @@ let cliPinMode = false;            // ピンモード（タップで行をメモ
 let cliPinTouchMoved = false;      // ピンモード: タッチ中にmoveしたか
 let cliDraftSaveTimer = null;      // 下書き自動保存タイマー
 let cliPendingServerContent = null; // サーバー側の新しい内容（更新バナー表示中）
+let cliImageMode = false;           // 現在開いているファイルが画像かどうか
+const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
 
 // =========================================
 // モード切替
@@ -50,6 +52,7 @@ function toggleCliViewer() {
         }
         // 編集モードを解除（明示的に破棄→下書きも消す）
         if (cliEditMode) cliExitEditMode(true);
+        cliHideImage();
         cliDismissDraftBanner();
         canvas.style.display = '';
         // ヘッダー要素を復元
@@ -163,6 +166,56 @@ async function cliRefreshFiles() {
 }
 
 // =========================================
+// 画像ファイル判定・表示ヘルパー
+// =========================================
+
+function cliIsImagePath(path) {
+    const ext = '.' + path.split('.').pop().toLowerCase();
+    return CLI_IMAGE_EXTENSIONS.includes(ext);
+}
+
+function cliTryParseImageContent(content) {
+    try {
+        const parsed = JSON.parse(content);
+        if (parsed && parsed.type === 'image' && parsed.data) {
+            return parsed;
+        }
+    } catch (_) {}
+    return null;
+}
+
+function cliShowImage(imageObj) {
+    cliImageMode = true;
+    const area = document.getElementById('cli-viewer-area');
+    // CodeMirrorを非表示
+    if (cliEditorInstance) {
+        cliEditorInstance.getWrapperElement().style.display = 'none';
+    }
+    // 既存の画像コンテナがあれば再利用
+    let container = document.getElementById('cli-image-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'cli-image-container';
+        container.className = 'cli-image-container';
+        area.appendChild(container);
+    }
+    container.style.display = 'flex';
+    container.innerHTML = `<img src="data:${imageObj.mimeType};base64,${imageObj.data}" alt="uploaded image" class="cli-image-preview">`;
+}
+
+function cliHideImage() {
+    cliImageMode = false;
+    const container = document.getElementById('cli-image-container');
+    if (container) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+    }
+    if (cliEditorInstance) {
+        cliEditorInstance.getWrapperElement().style.display = '';
+    }
+}
+
+// =========================================
 // ファイルツリーのレンダリング
 // =========================================
 
@@ -231,7 +284,8 @@ function cliCreateFileItem(fileInfo) {
 
     const nameSpan = document.createElement('span');
     nameSpan.style.cssText = 'flex-grow:1; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-    nameSpan.textContent = (isSelected ? '👉 ' : '📄 ') + fileName;
+    const fileIcon = cliIsImagePath(fileInfo.path) ? '🖼️' : '📄';
+    nameSpan.textContent = (isSelected ? '👉 ' : fileIcon + ' ') + fileName;
     nameSpan.onclick = () => cliOpenFile(fileInfo.path);
 
     const deleteBtn = document.createElement('button');
@@ -265,12 +319,76 @@ async function cliOpenFile(path) {
     document.getElementById('cli-current-filename').textContent = path;
     cliDismissDraftBanner();
 
+    const isImage = cliIsImagePath(path);
+
+    // 画像ファイルの場合は下書き・編集モードなし
+    if (isImage) {
+        cliHideImage();
+        if (cliEditMode) cliExitEditMode(true);
+        cliEditorInstance.setValue('🖼️ 画像を読み込み中...');
+        closeCliSidebar();
+
+        const pass = await getAuthPassword();
+        if (!pass) return;
+
+        try {
+            updateStatus('画像取得中...', false);
+            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(path)}`;
+            const res = await fetch(url, { method: 'POST' });
+            const json = await res.json();
+
+            if (json.status === 'success') {
+                let content = json.content;
+
+                // 暗号化データの復号
+                try {
+                    const parsed = JSON.parse(content);
+                    if (parsed && parsed.encrypted) {
+                        const encKey = await getEncryptionKey();
+                        if (!encKey) {
+                            cliEditorInstance.setValue('[暗号化データ] 暗号キーを設定してください');
+                            cliRenderFileTree(cliFileList);
+                            return;
+                        }
+                        try {
+                            content = await decryptData(parsed, encKey);
+                        } catch (decErr) {
+                            cliEditorInstance.setValue('[復号失敗] 暗号キーが正しいか確認してください');
+                            cliRenderFileTree(cliFileList);
+                            return;
+                        }
+                    }
+                } catch (_) {}
+
+                const imageObj = cliTryParseImageContent(content);
+                if (imageObj) {
+                    cliShowImage(imageObj);
+                    await cliSaveFileToCache(path, content, json.updatedAt);
+                    updateStatus('🖼️ 画像表示完了', true);
+                } else {
+                    cliEditorInstance.setValue('[画像データの解析に失敗しました]');
+                    updateStatus('画像解析失敗', false, true);
+                }
+            } else {
+                throw new Error(json.message);
+            }
+        } catch (e) {
+            cliEditorInstance.setValue('エラー: ' + e.message);
+            updateStatus('取得失敗', false, true);
+        }
+
+        cliRenderFileTree(cliFileList);
+        return;
+    }
+
+    // === テキストファイルの場合（従来の処理） ===
+    cliHideImage();
+
     // 下書きチェック
     const draft = await cliGetDraft(path);
     if (draft) {
         const cached = await cliGetCachedFile(path);
         cliEditorInstance.setValue(draft.content);
-        // 編集モードに入る（元テキストはキャッシュのサーバー版）
         cliEnterEditMode(cached ? cached.content : '');
         cliHasUnsavedChanges = true;
         cliUpdateEditButtons();
@@ -327,15 +445,23 @@ async function cliOpenFile(path) {
                 // JSONでなければ平文としてそのまま使う
             }
 
+            // 復号後にも画像JSONかチェック（拡張子に依らず画像データだった場合）
+            const imageObj = cliTryParseImageContent(content);
+            if (imageObj) {
+                cliShowImage(imageObj);
+                await cliSaveFileToCache(path, content, json.updatedAt);
+                updateStatus('🖼️ 画像表示完了', true);
+                cliRenderFileTree(cliFileList);
+                return;
+            }
+
             if (cached && cached.content === content) {
-                // キャッシュと同一 → 表示はそのまま、メタデータだけ更新
                 cliOriginalContent = content;
                 cliHasUnsavedChanges = false;
                 cliUpdateEditButtons();
                 await cliSaveFileToCache(path, content, json.updatedAt);
                 updateStatus('取得完了', true);
             } else if (!cached) {
-                // キャッシュ無し → サーバー版を直接表示
                 cliEditorInstance.setValue(content);
                 cliOriginalContent = content;
                 cliHasUnsavedChanges = false;
@@ -344,7 +470,6 @@ async function cliOpenFile(path) {
                 await cliSaveFileToCache(path, content, json.updatedAt);
                 updateStatus('取得完了', true);
             } else {
-                // キャッシュと内容が違う → 勝手に差し替えず更新バナーで通知
                 cliPendingServerContent = content;
                 await cliSaveFileToCache(path, content, json.updatedAt);
                 cliShowUpdateBanner();
@@ -770,6 +895,10 @@ function showPinFeedback(x, y, text) {
 function toggleCliEditMode() {
     if (!cliCurrentFile) {
         alert('先にファイルを開いてください');
+        return;
+    }
+    if (cliImageMode) {
+        alert('画像ファイルは編集できません');
         return;
     }
     if (cliEditMode) {
