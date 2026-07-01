@@ -590,14 +590,14 @@
         }
         .cli-template-register-actions button:active { transform: scale(0.97); }
         .cli-copy-toast {
-            position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%);
+            position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
             background: linear-gradient(135deg, #6b46c1, #553c9a);
             color: white; padding: 12px 24px; border-radius: 8px;
             font-size: 0.9rem; font-weight: bold; z-index: 20000;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            transition: bottom 0.3s ease; white-space: nowrap;
+            transition: top 0.3s ease; white-space: nowrap;
         }
-        .cli-copy-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+        .cli-copy-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
 
         /* 長押しフィードバック */
         .cli-longpress-indicator {
@@ -665,15 +665,15 @@
 
         /* 保存完了トースト通知 */
         .cli-save-toast {
-            position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%);
+            position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
             background: linear-gradient(135deg, #38a169, #2f855a);
             color: white; padding: 12px 24px; border-radius: 8px;
             font-size: 0.9rem; font-weight: bold; z-index: 20000;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            transition: bottom 0.3s ease;
+            transition: top 0.3s ease;
             white-space: nowrap;
         }
-        .cli-save-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+        .cli-save-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
 
         /* =========================================
            フォルダツリーブラウザ
@@ -781,14 +781,14 @@
 
         /* 挿入完了フィードバック */
         .fb-inserted-toast {
-            position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%);
+            position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
             background: linear-gradient(135deg, #d69e2e, #b7791f);
             color: white; padding: 12px 24px; border-radius: 8px;
             font-size: 0.9rem; font-weight: bold; z-index: 30000;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            transition: bottom 0.3s ease; white-space: nowrap;
+            transition: top 0.3s ease; white-space: nowrap;
         }
-        .fb-inserted-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+        .fb-inserted-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
 
         /* =========================================
            文字数バッジ
@@ -817,16 +817,16 @@
 
         /* 文字数詳細トースト */
         .cli-charcount-toast {
-            position: fixed; bottom: -80px; left: 50%; transform: translateX(-50%);
+            position: fixed; top: -80px; left: 50%; transform: translateX(-50%);
             background: linear-gradient(135deg, #2d3748, #1a202c);
             border: 1px solid #4a5568;
             color: #e2e8f0; padding: 12px 20px; border-radius: 10px;
             font-size: 0.85rem; z-index: 20000;
             box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-            transition: bottom 0.3s ease; white-space: nowrap;
+            transition: top 0.3s ease; white-space: nowrap;
             text-align: center; line-height: 1.6;
         }
-        .cli-charcount-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+        .cli-charcount-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
         .cli-charcount-toast .charcount-label {
             color: #718096; font-size: 0.75rem;
         }
@@ -921,11 +921,11 @@
 
         /* 提案挿入トースト */
         .cli-proposal-toast {
-            position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%);
+            position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
             background: linear-gradient(135deg, #38a169, #2f855a);
             color: white; padding: 12px 24px; border-radius: 8px;
             font-size: 0.9rem; font-weight: bold; z-index: 20000;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            transition: bottom 0.3s ease; white-space: nowrap;
+            transition: top 0.3s ease; white-space: nowrap;
         }
-        .cli-proposal-toast.show { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+        .cli-proposal-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
