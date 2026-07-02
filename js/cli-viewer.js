@@ -88,7 +88,7 @@ async function initCliViewer() {
         });
         cliEditorInstance.getWrapperElement().style.fontSize = cliFontSize + "px";
         cliEditorInstance.getWrapperElement().style.fontFamily =
-            "'Helvetica Neue', Arial, 'Hiragino Sans', 'Meiryo', sans-serif";
+            "'Segoe UI', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif";
         setTimeout(() => cliEditorInstance.refresh(), 100);
 
         // ピンモードのタップハンドラ設定
@@ -111,7 +111,20 @@ function destroyCliEditor() {
 // サイドバー制御
 // =========================================
 
+// PC判定（サイドバー常時表示レイアウトが適用される幅かどうか）
+function cliIsPcLayout() {
+    return window.matchMedia('(min-width: 1024px)').matches;
+}
+
 function toggleCliSidebar() {
+    // PCではサイドバーが常時表示なので、☰は「畳む/戻す」のトグルとして動作
+    if (cliIsPcLayout()) {
+        document.getElementById('cli-viewer').classList.toggle('pc-sidebar-hidden');
+        // 本文エリアの幅が変わるのでCodeMirrorの座標計算を更新（transition完了後）
+        setTimeout(() => { if (cliEditorInstance) cliEditorInstance.refresh(); }, 320);
+        return;
+    }
+
     const sidebar = document.getElementById('cli-sidebar');
     const overlay = document.getElementById('cli-sidebar-overlay');
     const isOpen = sidebar.classList.contains('open');
@@ -124,9 +137,73 @@ function toggleCliSidebar() {
     }
 }
 
+// サイドバーのピンモードボタン用（スマホではサイドバーを閉じる、PCでは開いたまま）
+function cliPinFromSidebar() {
+    toggleCliPinMode();
+    if (!cliIsPcLayout()) toggleCliSidebar();
+}
+
 function closeCliSidebar() {
     document.getElementById('cli-sidebar').classList.remove('open');
     document.getElementById('cli-sidebar-overlay').classList.remove('show');
+}
+
+// =========================================
+// CLI内 接続設定（暗号キー・合言葉）
+// クラウドモーダルまで戻らなくても設定変更できる簡易版。
+// 保存処理は main.js の関数（IndexedDB）をそのまま利用する。
+// =========================================
+
+async function cliOpenSettings() {
+    document.getElementById('cli-enc-key-input').value = '';
+    document.getElementById('cliSettingsModal').classList.add('show');
+    await cliUpdateSettingsStatus();
+}
+
+// モーダル内のステータス表示（暗号キー/合言葉の設定状況）を更新
+async function cliUpdateSettingsStatus() {
+    const encEl = document.getElementById('cli-enc-status');
+    const authEl = document.getElementById('cli-auth-status');
+
+    const key = await getEncryptionKey();
+    encEl.textContent = key ? '🔒 暗号化有効' : '🔓 無効（平文）';
+    encEl.style.color = key ? '#48bb78' : '#f6ad55';
+
+    const pass = await getSetting('auth_password');
+    authEl.textContent = pass ? '✅ 設定済み' : '⚠️ 未設定';
+    authEl.style.color = pass ? '#48bb78' : '#f6ad55';
+}
+
+async function cliSaveEncKey() {
+    const input = document.getElementById('cli-enc-key-input');
+    const key = input.value.trim();
+    if (!key) return alert('暗号キーを入力してください');
+    if (key.length < 4) return alert('4文字以上で設定してください');
+    await setEncryptionKey(key);
+    input.value = '';
+    await cliUpdateSettingsStatus();
+    // クラウドモーダル側のステータス表示も同期しておく
+    if (typeof updateEncKeyStatus === 'function') updateEncKeyStatus();
+}
+
+async function cliRemoveEncKey() {
+    if (!confirm('暗号キーを解除しますか？\n（暗号化済みデータの読込には再設定が必要です）')) return;
+    await clearEncryptionKey();
+    await cliUpdateSettingsStatus();
+    if (typeof updateEncKeyStatus === 'function') updateEncKeyStatus();
+}
+
+async function cliChangeAuthPassword() {
+    const pass = prompt('新しい合言葉を入力してください');
+    if (!pass) return;
+    await setSetting('auth_password', pass);
+    await cliUpdateSettingsStatus();
+}
+
+async function cliClearAuthPassword() {
+    if (!confirm('保存済みの合言葉をクリアしますか？\n（次回のサーバーアクセス時に再入力を求められます）')) return;
+    await clearAuthPassword();
+    await cliUpdateSettingsStatus();
 }
 
 // =========================================

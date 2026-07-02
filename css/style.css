@@ -4,8 +4,28 @@
             box-sizing: border-box;
         }
 
+        /* --- スクロールバー（ダークテーマ用・主にPCで効く） --- */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #4a5568 transparent;
+        }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-corner { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background: #4a5568; border-radius: 5px;
+            border: 2px solid transparent; background-clip: padding-box;
+        }
+        ::-webkit-scrollbar-thumb:hover { background-color: #718096; }
+
+        /* --- キーボード操作時のフォーカス表示（PC用） --- */
+        button:focus-visible, input:focus-visible, textarea:focus-visible {
+            outline: 2px solid #63b3ed;
+            outline-offset: 1px;
+        }
+
         body {
-            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-family: "Segoe UI", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", Meiryo, "Helvetica Neue", Arial, sans-serif;
             background-color: #1a202c;
             background-image: radial-gradient(#2d3748 1px, transparent 1px);
             background-size: 20px 20px;
@@ -934,3 +954,125 @@
             transition: top 0.3s ease; white-space: nowrap;
         }
         .cli-proposal-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
+
+        /* =========================================
+           CLI接続設定モーダル（暗号キー・合言葉）
+           ========================================= */
+        .cli-settings-block {
+            background: #1a202c;
+            border: 1px solid #4a5568;
+            border-radius: 4px;
+            padding: 10px;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .cli-settings-row {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px;
+        }
+        .cli-settings-label { font-size: 0.9rem; color: #ecc94b; white-space: nowrap; }
+        .cli-settings-status { font-size: 0.75rem; text-align: right; }
+
+        /* =========================================
+           PC最適化
+           スマホ表示（〜1023px）は従来のまま。
+           マウス操作＋広い画面向けの調整のみここに書く。
+           ========================================= */
+
+        /* --- ホバー可能なデバイス（マウス操作）向けの細部調整 --- */
+        @media (hover: hover) and (pointer: fine) {
+            /* ファイル削除ボタンは行ホバー時のみ表示（一覧がすっきりする） */
+            .cli-file-item .cli-file-delete { opacity: 0; transition: opacity 0.15s; }
+            .cli-file-item:hover .cli-file-delete { opacity: 0.7; }
+            .cli-file-item .cli-file-delete:hover { opacity: 1; }
+
+            /* サイドバー項目のホバーを軽く光らせる */
+            .cli-file-item, .cli-folder-header { transition: background 0.15s; }
+        }
+
+        /* --- ワイド画面レイアウト（1024px以上） --- */
+        @media (min-width: 1024px) {
+
+            /* === CLI Viewer: サイドバー常時表示（ドッキング） === */
+            .cli-sidebar {
+                /* ヘッダー(50px) + CLIトップバー(40px) の下に配置 */
+                top: calc(90px + env(safe-area-inset-top, 0px));
+                width: 300px;
+                transform: none;
+                background-color: #171923;
+                border-right: 1px solid #2d3748;
+                z-index: 5000;
+            }
+            .cli-sidebar.open { transform: none; }
+            .cli-sidebar-overlay { display: none !important; }
+
+            /* ☰ボタンでサイドバーを畳んだ状態（JSが pc-sidebar-hidden を付与） */
+            #cli-viewer.pc-sidebar-hidden .cli-sidebar { transform: translateX(-100%); }
+            #cli-viewer.pc-sidebar-hidden .cli-main { margin-left: 0; }
+
+            /* === CLI Viewer: メモ/指示パッドを右サイドパネル化 === */
+            .cli-main {
+                margin-left: 300px;
+                transition: margin-left 0.3s ease;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 400px);
+                grid-template-rows: auto auto minmax(0, 1fr);
+            }
+            .cli-draft-banner  { grid-column: 1; grid-row: 1; }
+            .cli-update-banner { grid-column: 1; grid-row: 2; }
+            .cli-viewer-area   { grid-column: 1; grid-row: 3; }
+            .cli-memo-area {
+                grid-column: 2; grid-row: 1 / 4;
+                border-top: none;
+                border-left: 1px solid #4a5568;
+                display: flex; flex-direction: column;
+                overflow: hidden;
+                padding-bottom: 0;
+            }
+            .cli-memo-header {
+                flex-shrink: 0;
+                border-bottom: 1px solid #2d3748;
+            }
+            /* 右パネルは常時表示なので折りたたみボタンは不要 */
+            .cli-memo-collapse-btn { display: none; }
+            .cli-memo-body,
+            .cli-memo-body.collapsed {
+                display: flex; flex-direction: column;
+                flex: 1; min-height: 0;
+                overflow-y: auto;
+            }
+            .cli-tab-content.active { flex: 1; min-height: 0; }
+
+            /* 入力欄はパネルの高さいっぱいまで使う */
+            #cli-memo-content { max-height: none; flex: 1; min-height: 120px; }
+            #cli-instruction-content { max-height: none; flex: 1; min-height: 160px; }
+            .cli-proposals-container { max-height: none; flex: 1; }
+
+            /* === 本文を読みやすい中央カラムに（ワイドモニタで行が伸びきらないように） === */
+            .cli-viewer-area .CodeMirror pre.CodeMirror-line,
+            .cli-viewer-area .CodeMirror pre.CodeMirror-line-like {
+                padding-left: max(36px, calc(50% - 430px));
+                padding-right: max(36px, calc(50% - 430px));
+            }
+            .cli-viewer-area .CodeMirror-lines {
+                padding-top: 24px;
+                padding-bottom: 120px; /* 末尾を読みやすい位置までスクロールできる余白 */
+            }
+
+            /* === トップバーの微調整 === */
+            .cli-current-file { max-width: 45vw; }
+
+            /* タッチ向けの大きめボタンをマウス向けに少し引き締める */
+            .cli-instruction-actions .btn-copy,
+            .cli-instruction-actions .btn-clear,
+            .btn-path-browse, .btn-path-current, .btn-template {
+                padding: 8px 12px; font-size: 0.8rem;
+            }
+
+            /* === モーダルをPCの画面サイズに合わせて拡大 === */
+            .folder-browser-modal { max-width: 640px; }
+            .folder-browser-tree { max-height: 60vh; }
+
+            /* テンプレポップアップも右パネル内で広めに使う */
+            .cli-template-popup { max-height: 70vh; }
+            .cli-template-list { max-height: 40vh; }
+        }

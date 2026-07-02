@@ -74,6 +74,7 @@
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(-2)">A-</button>
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(2)">A+</button>
             <button class="btn-tool" onclick="cliRefreshFiles()">🔄</button>
+            <button class="btn-tool" onclick="cliOpenSettings()" title="暗号キー・合言葉の設定">🔐</button>
         </div>
 
         <div class="cli-sidebar" id="cli-sidebar">
@@ -85,7 +86,7 @@
                 <div style="text-align:center; color:#718096; padding:20px;">📡 CLIボタンで開始</div>
             </div>
             <div class="cli-sidebar-footer">
-                <button class="btn-tool" id="cli-pin-btn" onclick="toggleCliPinMode(); toggleCliSidebar();" style="width:100%; padding:8px; margin-bottom:8px;" title="ピンモード: タップで行をメモに転記">📌 ピンモード</button>
+                <button class="btn-tool" id="cli-pin-btn" onclick="cliPinFromSidebar()" style="width:100%; padding:8px; margin-bottom:8px;" title="ピンモード: タップで行をメモに転記">📌 ピンモード</button>
                 <button class="btn-control" onclick="toggleCliViewer()" style="width:100%; padding:8px; margin-bottom:8px;">🖼️ Canvasに戻る</button>
                 <button class="btn-control btn-danger" onclick="cliDeleteAllFiles()" style="width:100%; padding:8px;">🗑️ 全ファイル削除</button>
             </div>
@@ -211,6 +212,39 @@
             </div>
             <div class="modal-footer">
                 <button class="btn-control" onclick="closeModal('cloudModal')">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CLI接続設定モーダル（暗号キー・合言葉をCLIビューア内から変更できる） -->
+    <div id="cliSettingsModal" class="modal-overlay" onclick="if(event.target===this) closeModal('cliSettingsModal')">
+        <div class="modal-box" style="max-width: 420px;">
+            <h3 class="modal-title">🔐 接続設定</h3>
+            <div class="modal-body">
+                <div class="cli-settings-block">
+                    <div class="cli-settings-row">
+                        <span class="cli-settings-label">🔐 E2E暗号キー</span>
+                        <span id="cli-enc-status" class="cli-settings-status">確認中...</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="text" id="cli-enc-key-input" class="input-text" placeholder="暗号キーを入力..." style="flex:1;">
+                        <button class="btn-control" onclick="cliSaveEncKey()" style="padding:6px 10px;">設定</button>
+                        <button class="btn-control btn-danger" onclick="cliRemoveEncKey()" style="padding:6px 10px;">解除</button>
+                    </div>
+                </div>
+                <div class="cli-settings-block">
+                    <div class="cli-settings-row">
+                        <span class="cli-settings-label">🗝️ 合言葉（サーバー認証）</span>
+                        <span id="cli-auth-status" class="cli-settings-status">確認中...</span>
+                    </div>
+                    <div class="input-group">
+                        <button class="btn-control" onclick="cliChangeAuthPassword()" style="flex:1;">再入力</button>
+                        <button class="btn-control btn-danger" onclick="cliClearAuthPassword()" style="padding:6px 10px;">クリア</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-control" onclick="closeModal('cliSettingsModal')">閉じる</button>
             </div>
         </div>
     </div>

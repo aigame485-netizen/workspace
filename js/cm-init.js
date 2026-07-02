@@ -28,7 +28,7 @@ function createEditor(textarea, winId, fontSize = "14px") {
 
     // 初期フォントサイズ設定
     editor.getWrapperElement().style.fontSize = fontSize;
-    editor.getWrapperElement().style.fontFamily = "'Helvetica Neue', Arial, 'Hiragino Sans', 'Meiryo', sans-serif";
+    editor.getWrapperElement().style.fontFamily = "'Segoe UI', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif";
     
     // フォント適用やDOMへの追加が完了したあとにレイアウトを再計算する
     setTimeout(() => {
