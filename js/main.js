@@ -66,6 +66,9 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             updateTabUI();
             updateBoardDisplay();
             loadFromDB();
+
+            // CLIビューアをデフォルト表示にする
+            toggleCliViewer();
         };
 
         async function switchTab(tabId) {
