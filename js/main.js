@@ -616,7 +616,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                         </div>
 
                         <div style="flex-grow:1;"></div>
-                        
+
+                        <span class="media-rate-box" id="media-rate-box-${idNum}" style="display:none;" title="動画の再生速度（0.1〜3.0倍）">⏩<input type="number" id="media-rate-input-${idNum}" min="0.1" max="3" step="0.1" value="1" onchange="setMediaRate(${idNum}, this.value)"></span>
                         <button class="btn-tool btn-danger" id="btn-media-del-${idNum}" onclick="closeMedia(${idNum})" title="メディア削除" style="display:none; padding:4px 6px;">🗑️</button>
                         <button class="btn-tool" id="btn-media-toggle-${idNum}" onclick="toggleMediaVisibility(${idNum})" title="表示切替" style="display:none;">🎬</button>
 
@@ -942,29 +943,14 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         function showMedia(id,blob,type,rate=1) {
             const c=document.getElementById(`media-content-${id}`); c.innerHTML='';
             const layer = document.getElementById(`media-${id}`);
-
-            // 前回の速度バーが残っていれば消してレイアウトをリセット
-            const oldBar = layer.querySelector('.media-speed-bar');
-            if (oldBar) oldBar.remove();
-            c.style.height='100%'; c.style.flex=''; c.style.minHeight='';
             c.style.flexDirection=''; c.style.gap='';
 
             const url=URL.createObjectURL(blob); let el;
+            const isVideo = type.startsWith('video/');
             if(type.startsWith('image/')) { el=document.createElement('img'); el.src=url; }
-            else if(type.startsWith('video/')) {
+            else if(isVideo) {
                 el=document.createElement('video'); el.src=url; el.controls=true; el.loop=true; el.muted=true; el.playsInline=true;
                 el.playbackRate = rate;
-
-                // 再生速度バー（0.1〜3.0倍の無段階スライダー）
-                const bar = document.createElement('div');
-                bar.className = 'media-speed-bar';
-                bar.innerHTML = `<span>⏩</span>
-                    <input type="range" id="media-rate-slider-${id}" min="0.1" max="3" step="0.05" value="${rate}" oninput="setMediaRate(${id}, this.value)">
-                    <span class="media-rate-label" id="media-rate-label-${id}">${Number(rate).toFixed(2)}x</span>
-                    <button class="btn-tool" onclick="setMediaRate(${id}, 1)">1x</button>`;
-                layer.insertBefore(bar, c);
-                // バーの分だけ動画領域を縮める
-                c.style.height='auto'; c.style.flex='1'; c.style.minHeight='0';
             }
             else if(type.startsWith('audio/')) {
                 // BGM用の音声プレイヤー（ループ再生）。🎬ボタンでレイヤーを隠しても再生は続く
@@ -985,18 +971,24 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
 
                 document.getElementById(`btn-media-toggle-${id}`).style.display = 'inline-block';
                 document.getElementById(`btn-media-del-${id}`).style.display = 'inline-block';
+
+                // 動画のときだけツールバーに速度ボックスを表示
+                const rateBox = document.getElementById(`media-rate-box-${id}`);
+                if (rateBox) rateBox.style.display = isVideo ? 'inline-flex' : 'none';
+                if (isVideo) {
+                    const input = document.getElementById(`media-rate-input-${id}`);
+                    if (input) input.value = Math.round(rate * 100) / 100;
+                }
             }
         }
 
-        // 動画の再生速度を変更する（スライダー・1xボタンから呼ばれる）
+        // 動画の再生速度を変更する（ツールバーの数値ボックスから呼ばれる）
         function setMediaRate(id, val) {
-            const v = Math.min(3, Math.max(0.1, parseFloat(val) || 1));
+            const v = Math.round(Math.min(3, Math.max(0.1, parseFloat(val) || 1)) * 100) / 100;
             const vid = document.querySelector(`#media-content-${id} video`);
             if (vid) vid.playbackRate = v;
-            const label = document.getElementById(`media-rate-label-${id}`);
-            if (label) label.textContent = v.toFixed(2) + 'x';
-            const slider = document.getElementById(`media-rate-slider-${id}`);
-            if (slider && parseFloat(slider.value) !== v) slider.value = v;
+            const input = document.getElementById(`media-rate-input-${id}`);
+            if (input && parseFloat(input.value) !== v) input.value = v;
             notifyChange('win-' + id); // 速度も保存対象にする
         }
         function handleDragOver(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.add('drag-over-active'); }
@@ -1007,9 +999,9 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             const layer=document.getElementById(`media-${id}`);
             layer.classList.remove('show');
             layer.classList.remove('hidden-media');
-            // 速度バーも一緒に削除
-            const bar=layer.querySelector('.media-speed-bar');
-            if(bar) bar.remove();
+            // 速度ボックスも非表示に戻す
+            const rateBox=document.getElementById(`media-rate-box-${id}`);
+            if(rateBox) rateBox.style.display='none';
 
             const c=document.getElementById(`media-content-${id}`);
             if(c.firstChild) URL.revokeObjectURL(c.firstChild.src); 

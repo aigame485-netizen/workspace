@@ -27,6 +27,9 @@
         :root {
             /* エディタの書体（ヘッダーの書体セレクトで切替。JSから上書きされる） */
             --editor-font: 'Segoe UI', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
+            /* エディタ配色（VSCode Dark Modern準拠: 無彩色の暗灰背景 + 抑えめのオフホワイト文字） */
+            --editor-bg: #1f1f1f;
+            --editor-fg: #d4d4d4;
         }
 
         body {
@@ -154,7 +157,7 @@
             justify-content: flex-end;
         }
         .window {
-            position: absolute; background-color: #222630;
+            position: absolute; background-color: var(--editor-bg);
             border: 1px solid #4a5568; border-radius: 6px;
             display: flex; flex-direction: column;
             width: 320px; height: 400px;
@@ -231,7 +234,7 @@
             position: relative; z-index: 20;
         }
         textarea {
-            flex-grow: 1; width: 100%; background-color: #222630; color: #e2e8f0;
+            flex-grow: 1; width: 100%; background-color: var(--editor-bg); color: var(--editor-fg);
             border: none; padding: 10px; resize: none; line-height: 1.7; outline: none; box-sizing: border-box; 
         }
         /* --- CodeMirror 5 エディタ用 --- */
@@ -248,11 +251,11 @@
             display: none !important; /* スクロールバーは.CodeMirror自体で制御するか非表示 */
         }
         
-        /* カスタムダークテーマ (workspace-dark) */
-        .cm-s-workspace-dark.CodeMirror { color: #e2e8f0; background-color: #222630; }
-        .cm-s-workspace-dark .CodeMirror-cursor { border-left: 2px solid #63b3ed; }
-        .cm-s-workspace-dark .CodeMirror-selected { background: rgba(99, 179, 237, 0.3); }
-        .cm-s-workspace-dark .CodeMirror-line::selection, .cm-s-workspace-dark .CodeMirror-line > span::selection, .cm-s-workspace-dark .CodeMirror-line > span > span::selection { background: rgba(99, 179, 237, 0.3); }
+        /* カスタムダークテーマ (workspace-dark) — 配色はVSCode Dark Modern準拠 */
+        .cm-s-workspace-dark.CodeMirror { color: var(--editor-fg); background-color: var(--editor-bg); }
+        .cm-s-workspace-dark .CodeMirror-cursor { border-left: 2px solid #aeafad; }
+        .cm-s-workspace-dark .CodeMirror-selected { background: #264f78; }
+        .cm-s-workspace-dark .CodeMirror-line::selection, .cm-s-workspace-dark .CodeMirror-line > span::selection, .cm-s-workspace-dark .CodeMirror-line > span > span::selection { background: #264f78; }
         
         /* マークダウンのハイライト */
         .cm-s-workspace-dark .cm-header { font-weight: bold; color: #569cd6; }
@@ -292,15 +295,17 @@
         
         .media-content { max-width: 100%; max-height: 100%; object-fit: contain; }
 
-        /* --- 動画の再生速度バー --- */
-        .media-speed-bar {
-            flex-shrink: 0; width: 100%;
-            display: flex; align-items: center; gap: 6px;
-            padding: 4px 10px; background-color: rgba(26, 32, 44, 0.9);
-            color: #e2e8f0; font-size: 0.75rem;
+        /* --- 動画の再生速度ボックス（ツールバー内） --- */
+        .media-rate-box {
+            display: inline-flex; align-items: center; gap: 2px;
+            font-size: 0.75rem; color: #a0aec0; flex-shrink: 0;
         }
-        .media-speed-bar input[type="range"] { flex-grow: 1; min-width: 50px; cursor: pointer; }
-        .media-rate-label { min-width: 44px; text-align: right; font-family: monospace; }
+        .media-rate-box input {
+            width: 52px; background-color: #2d3748; color: #e2e8f0;
+            border: 1px solid #4a5568; border-radius: 3px;
+            padding: 2px 4px; font-size: 0.75rem;
+        }
+        .media-rate-box input:focus { border-color: #63b3ed; outline: none; }
 
         /* --- BGM（音声）プレイヤー --- */
         .media-audio-label { color: #a0aec0; font-size: 0.85rem; }
@@ -490,6 +495,7 @@
         }
         .cli-viewer-area {
             flex-grow: 1; overflow: hidden; position: relative;
+            background-color: var(--editor-bg); /* 読書エリアもエディタ配色に合わせる */
         }
         .cli-viewer-area .CodeMirror {
             height: 100% !important;
@@ -730,7 +736,7 @@
             border: 1px solid rgba(221, 107, 32, 0.3);
         }
         #cli-viewer.cli-edit-mode .cli-viewer-area .CodeMirror {
-            background-color: #1a202c !important;
+            background-color: var(--editor-bg) !important;
         }
 
         /* 保存完了トースト通知 */
