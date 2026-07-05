@@ -1135,3 +1135,22 @@
             .cli-template-popup { max-height: 70vh; }
             .cli-template-list { max-height: 40vh; }
         }
+
+        /* --- モバイル配色（768px以下） ---
+           PC向けのVSCode風配色（#1F1F1F/#D4D4D4）はスマホの発色だと暗く見えるため、
+           モバイルでは以前の配色に戻す。※このブロックは上書きのため必ずファイル末尾に置くこと */
+        @media (max-width: 768px) {
+            :root {
+                --editor-bg: #222630;
+                --editor-fg: #e2e8f0;
+            }
+            /* CLIビューアの読書エリアは従来どおり #cli-viewer の背景(#1a202c)を透過させる */
+            .cli-viewer-area { background-color: transparent; }
+            #cli-viewer.cli-edit-mode .cli-viewer-area .CodeMirror { background-color: #1a202c !important; }
+            /* カーソル・選択範囲も以前の青系に戻す */
+            .cm-s-workspace-dark .CodeMirror-cursor { border-left-color: #63b3ed; }
+            .cm-s-workspace-dark .CodeMirror-selected { background: rgba(99, 179, 237, 0.3); }
+            .cm-s-workspace-dark .CodeMirror-line::selection,
+            .cm-s-workspace-dark .CodeMirror-line > span::selection,
+            .cm-s-workspace-dark .CodeMirror-line > span > span::selection { background: rgba(99, 179, 237, 0.3); }
+        }
