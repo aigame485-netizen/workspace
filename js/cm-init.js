@@ -36,9 +36,32 @@ function createEditor(textarea, winId, fontSize = "14px") {
     // 書体はCSS変数で一元管理（ヘッダーの書体セレクトから変更される）
     editor.getWrapperElement().style.fontFamily = "var(--editor-font)";
     
+    // --- 文字数カウンタ（帯に常時表示、範囲選択中は選択文字数も表示） ---
+    const idNum = winId.split('-')[1];
+    function formatCharCount(n) {
+        // CLIビューアのバッジと同じ表記ルール（1万字以上はK表記）
+        return (n >= 10000) ? (n / 1000).toFixed(1) + 'K' : n.toLocaleString();
+    }
+    function updateCharCount(cm) {
+        const counter = document.getElementById('char-count-' + idNum);
+        if (!counter) return;
+        const total = cm.getValue().length;
+        if (cm.somethingSelected()) {
+            const sel = cm.getSelection().length;
+            counter.textContent = `選択 ${sel.toLocaleString()} / ${formatCharCount(total)}字`;
+            counter.classList.add('has-selection');
+        } else {
+            counter.textContent = formatCharCount(total) + '字';
+            counter.classList.remove('has-selection');
+        }
+    }
+    // cursorActivityは「編集・カーソル移動・選択変更」すべてで発火する
+    editor.on("cursorActivity", updateCharCount);
+
     // フォント適用やDOMへの追加が完了したあとにレイアウトを再計算する
     setTimeout(() => {
         editor.refresh();
+        updateCharCount(editor); // 初期表示
     }, 100);
 
     // テキスト変更時に notifyChange を呼ぶ

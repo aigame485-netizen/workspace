@@ -273,6 +273,14 @@
         .cm-s-workspace-dark .cm-hr { color: #4a5568; }
         .cm-s-workspace-dark .cm-comment { color: #6a9955; }
         .cm-s-workspace-dark .cm-string { color: #68d391; }
+        /* ウィンドウ帯の文字数カウンタ */
+        .win-char-count {
+            font-size: 0.7rem; color: #718096; white-space: nowrap;
+            flex-shrink: 0; font-family: monospace; padding: 0 4px;
+        }
+        .win-char-count.has-selection { color: #63b3ed; font-weight: bold; }
+        .window.media-mode .win-char-count { display: none; } /* メディア表示中は不要 */
+
         .btn-tool { cursor: pointer; border: none; color: #e2e8f0; background-color: #4a5568; border-radius: 3px; padding: 4px 8px; font-size: 0.7rem; white-space: nowrap;}
         .btn-tool:hover { background-color: #718096; }
         .btn-font { font-family: monospace; font-weight: bold; width: 24px; padding: 4px 0; text-align: center; }

@@ -94,6 +94,9 @@ async function initCliViewer() {
         cliEditorInstance.getWrapperElement().style.fontFamily = "var(--editor-font)";
         setTimeout(() => cliEditorInstance.refresh(), 100);
 
+        // 範囲選択時に文字数バッジへ選択文字数を表示する
+        cliEditorInstance.on("cursorActivity", cliUpdateCharCount);
+
         // ピンモードのタップハンドラ設定
         setupPinMode(cliEditorInstance);
     }
@@ -1902,6 +1905,11 @@ function cliUpdateCharCount() {
         displayText = (charCount / 1000).toFixed(1) + 'K字';
     } else {
         displayText = charCount.toLocaleString() + '字';
+    }
+
+    // 範囲選択中は選択文字数を先頭に表示
+    if (cliEditorInstance.somethingSelected()) {
+        displayText = '選択 ' + cliEditorInstance.getSelection().length.toLocaleString() + ' / ' + displayText;
     }
 
     badge.textContent = displayText;

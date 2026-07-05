@@ -617,6 +617,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
 
                         <div style="flex-grow:1;"></div>
 
+                        <span class="win-char-count" id="char-count-${idNum}" title="文字数（範囲選択中は選択文字数も表示）">0字</span>
                         <span class="media-rate-box" id="media-rate-box-${idNum}" style="display:none;" title="動画の再生速度（100=等倍、10〜300）">⏩<input type="number" id="media-rate-input-${idNum}" min="10" max="300" step="10" value="100" onchange="setMediaRate(${idNum}, this.value)"></span>
                         <button class="btn-tool btn-danger" id="btn-media-del-${idNum}" onclick="closeMedia(${idNum})" title="メディア削除" style="display:none; padding:4px 6px;">🗑️</button>
                         <button class="btn-tool" id="btn-media-toggle-${idNum}" onclick="toggleMediaVisibility(${idNum})" title="表示切替" style="display:none;">🎬</button>
