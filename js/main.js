@@ -617,7 +617,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
 
                         <div style="flex-grow:1;"></div>
 
-                        <span class="media-rate-box" id="media-rate-box-${idNum}" style="display:none;" title="動画の再生速度（0.1〜3.0倍）">⏩<input type="number" id="media-rate-input-${idNum}" min="0.1" max="3" step="0.1" value="1" onchange="setMediaRate(${idNum}, this.value)"></span>
+                        <span class="media-rate-box" id="media-rate-box-${idNum}" style="display:none;" title="動画の再生速度（100=等倍、10〜300）">⏩<input type="number" id="media-rate-input-${idNum}" min="10" max="300" step="10" value="100" onchange="setMediaRate(${idNum}, this.value)"></span>
                         <button class="btn-tool btn-danger" id="btn-media-del-${idNum}" onclick="closeMedia(${idNum})" title="メディア削除" style="display:none; padding:4px 6px;">🗑️</button>
                         <button class="btn-tool" id="btn-media-toggle-${idNum}" onclick="toggleMediaVisibility(${idNum})" title="表示切替" style="display:none;">🎬</button>
 
@@ -972,23 +972,24 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 document.getElementById(`btn-media-toggle-${id}`).style.display = 'inline-block';
                 document.getElementById(`btn-media-del-${id}`).style.display = 'inline-block';
 
-                // 動画のときだけツールバーに速度ボックスを表示
+                // 動画のときだけツールバーに速度ボックスを表示（表記はツクールMZ流の百分率: 100=等倍）
                 const rateBox = document.getElementById(`media-rate-box-${id}`);
                 if (rateBox) rateBox.style.display = isVideo ? 'inline-flex' : 'none';
                 if (isVideo) {
                     const input = document.getElementById(`media-rate-input-${id}`);
-                    if (input) input.value = Math.round(rate * 100) / 100;
+                    if (input) input.value = Math.round(rate * 100);
                 }
             }
         }
 
         // 動画の再生速度を変更する（ツールバーの数値ボックスから呼ばれる）
+        // 値はツクールMZ流の百分率（100=等倍、150=1.5倍）。内部保存はplaybackRateの倍率のまま
         function setMediaRate(id, val) {
-            const v = Math.round(Math.min(3, Math.max(0.1, parseFloat(val) || 1)) * 100) / 100;
+            const pct = Math.round(Math.min(300, Math.max(10, parseFloat(val) || 100)));
             const vid = document.querySelector(`#media-content-${id} video`);
-            if (vid) vid.playbackRate = v;
+            if (vid) vid.playbackRate = pct / 100;
             const input = document.getElementById(`media-rate-input-${id}`);
-            if (input && parseFloat(input.value) !== v) input.value = v;
+            if (input && parseFloat(input.value) !== pct) input.value = pct;
             notifyChange('win-' + id); // 速度も保存対象にする
         }
         function handleDragOver(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.add('drag-over-active'); }
