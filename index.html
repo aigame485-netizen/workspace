@@ -41,6 +41,17 @@
 
         <span id="status-indicator">Ready</span>
 
+        <!-- エディタ書体切り替え -->
+        <select id="fontFamilySelect" class="font-select" onchange="changeEditorFont(this.value)" title="エディタの書体">
+            <option value="default">標準</option>
+            <option value="yugothic">游ゴシック</option>
+            <option value="meiryo">メイリオ</option>
+            <option value="bizud">BIZ UDゴシック</option>
+            <option value="kyokasho">UD教科書体</option>
+            <option value="mincho">游明朝</option>
+            <option value="mono">等幅ゴシック</option>
+        </select>
+
         <button class="btn-control btn-cloud" onclick="openCloudModal()">☁️ 接続</button>
 
         <div class="control-group">

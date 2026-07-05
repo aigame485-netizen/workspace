@@ -57,6 +57,14 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 if (savedName) boardNames[i] = savedName;
             }
             
+            // 保存済みの書体を復元
+            const savedFont = await getSetting('editor_font_family');
+            if (savedFont && FONT_FAMILY_PRESETS[savedFont]) {
+                applyEditorFont(savedFont);
+                const fontSel = document.getElementById('fontFamilySelect');
+                if (fontSel) fontSel.value = savedFont;
+            }
+
             const savedAuto = await getSetting('auto_save_enabled');
             if (savedAuto === true) {
                 isAutoSaveEnabled = true;
@@ -302,7 +310,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                     exportData.push({
                         id: r.id, title: r.title, order: r.order,
                         layoutPC: r.layoutPC, layoutMobile: r.layoutMobile, fontSize: r.fontSize,
-                        text: r.text, hasMedia: r.hasMedia, mediaType: r.mediaType, mediaBase64: b64
+                        text: r.text, hasMedia: r.hasMedia, mediaType: r.mediaType, mediaBase64: b64,
+                        mediaRate: r.mediaRate || 1
                     });
                 }
                 let sendBody = JSON.stringify(exportData);
@@ -382,7 +391,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                     const record = {
                         id: r.id, title: title, order: order,
                         layoutPC: lPC, layoutMobile: lMob, fontSize: fSize,
-                        text: r.text, hasMedia: r.hasMedia, mediaBlob: blob, mediaType: r.mediaType
+                        text: r.text, hasMedia: r.hasMedia, mediaBlob: blob, mediaType: r.mediaType,
+                        mediaRate: r.mediaRate || 1
                     };
                     
                     const p = new Promise((resolve, reject) => {
@@ -435,9 +445,16 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             
             const titleInput = el.querySelector('.win-title-input');
             
-            const hasMediaContent = !!blobCache[idNum]; 
+            const hasMediaContent = !!blobCache[idNum];
             let blob = null, type = null;
             if (hasMediaContent) { blob = blobCache[idNum].blob; type = blobCache[idNum].type; }
+
+            // 動画の再生速度（表示中のvideo要素から取得）
+            let mediaRate = 1;
+            if (hasMediaContent) {
+                const vid = document.querySelector(`#media-content-${idNum} video`);
+                if (vid && vid.playbackRate) mediaRate = vid.playbackRate;
+            }
             
             const allWins = Array.from(document.getElementById('canvas').children);
             const myOrder = allWins.indexOf(el);
@@ -472,8 +489,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             const data = {
                 id: idNum, title: titleInput.value, order: myOrder,
                 layoutPC: layoutPC, layoutMobile: layoutMobile, 
-                fontSize: currentFontSize, 
-                text: textContent, hasMedia: hasMediaContent, mediaBlob: blob, mediaType: type
+                fontSize: currentFontSize,
+                text: textContent, hasMedia: hasMediaContent, mediaBlob: blob, mediaType: type, mediaRate: mediaRate
             };
 
             return new Promise(res => {
@@ -614,7 +631,12 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                     </div>
                     
                     <div class="mobile-resize-handle" onmousedown="event.stopPropagation()" ontouchstart="startMobileResize(event, '${winId}')"></div>
-                </div>`;
+                </div>
+                <div class="win-resize-handle handle-l" onmousedown="startEdgeResize(event,'${winId}','l')"></div>
+                <div class="win-resize-handle handle-r" onmousedown="startEdgeResize(event,'${winId}','r')"></div>
+                <div class="win-resize-handle handle-b" onmousedown="startEdgeResize(event,'${winId}','b')"></div>
+                <div class="win-resize-handle handle-bl" onmousedown="startEdgeResize(event,'${winId}','bl')"></div>
+                <div class="win-resize-handle handle-br" onmousedown="startEdgeResize(event,'${winId}','br')"></div>`;
             
             document.getElementById('canvas').appendChild(div);
 
@@ -635,9 +657,9 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 if (ta) ta.value = r.text;
                 setWindowText(w.id, r.text);
             }
-            if(r.hasMedia && r.mediaBlob) { 
-                blobCache[r.id]={blob:r.mediaBlob, type:r.mediaType}; 
-                showMedia(r.id, r.mediaBlob, r.mediaType); 
+            if(r.hasMedia && r.mediaBlob) {
+                blobCache[r.id]={blob:r.mediaBlob, type:r.mediaType};
+                showMedia(r.id, r.mediaBlob, r.mediaType, r.mediaRate || 1);
             }
         }
         function removeWindow(id) { 
@@ -785,6 +807,31 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             notifyChange(winId);
         }
         
+        // --- 書体（フォントファミリー）切り替え ---
+        // Windows標準搭載フォントのプリセット。--editor-font 経由で全エディタに適用される
+        const FONT_FAMILY_PRESETS = {
+            default:  "'Segoe UI', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif",
+            yugothic: "'Yu Gothic UI', 'Yu Gothic', '游ゴシック', 'Meiryo', sans-serif",
+            meiryo:   "'Meiryo', 'メイリオ', sans-serif",
+            bizud:    "'BIZ UDPGothic', 'BIZ UDPゴシック', 'Meiryo', sans-serif",
+            kyokasho: "'UD Digi Kyokasho N-R', 'UD デジタル 教科書体 N-R', 'Yu Gothic UI', sans-serif",
+            mincho:   "'Yu Mincho', '游明朝', 'BIZ UDPMincho', 'MS PMincho', serif",
+            mono:     "'BIZ UDGothic', 'MS Gothic', 'ＭＳ ゴシック', 'Consolas', monospace"
+        };
+        function applyEditorFont(key) {
+            const family = FONT_FAMILY_PRESETS[key] || FONT_FAMILY_PRESETS.default;
+            document.documentElement.style.setProperty('--editor-font', family);
+            // 書体で文字幅が変わるため、全エディタのレイアウトを再計算する
+            if (window.cmEditorInstances) {
+                for (const ed of Object.values(window.cmEditorInstances)) ed.refresh();
+            }
+            if (typeof cliEditorInstance !== 'undefined' && cliEditorInstance) cliEditorInstance.refresh();
+        }
+        async function changeEditorFont(key) {
+            applyEditorFont(key);
+            await setSetting('editor_font_family', key);
+        }
+
         function resetFontSize(idNum) {
             const win = document.getElementById(`win-${idNum}`);
             if(!win) return;
@@ -808,6 +855,52 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         }
         function onMouseMove(e){ if(!currentDragWin)return; let nx=e.clientX-dx, ny=e.clientY-dy; if(ny<0)ny=0; currentDragWin.style.left=nx+'px'; currentDragWin.style.top=ny+'px'; }
         function onMouseUp(){ if(currentDragWin) notifyChange(currentDragWin.id); currentDragWin=null; document.removeEventListener('mousemove',onMouseMove); document.removeEventListener('mouseup',onMouseUp); }
+
+        // --- PCウィンドウの枠リサイズ（左・右・下・下両角） ---
+        let edgeResizeWin = null, edgeResizeDir = '', edgeStart = null;
+        function startEdgeResize(e, winId, dir) {
+            if (window.innerWidth <= 768) return; // スマホは専用ハンドルを使う
+            const w = document.getElementById(winId);
+            if (!w || w.classList.contains('docked-bottom')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            bringToFront(winId);
+            edgeResizeWin = w;
+            edgeResizeDir = dir;
+            edgeStart = { x: e.clientX, y: e.clientY, left: w.offsetLeft, w: w.offsetWidth, h: w.offsetHeight };
+            document.addEventListener('mousemove', onEdgeResizeMove);
+            document.addEventListener('mouseup', onEdgeResizeEnd);
+        }
+        function onEdgeResizeMove(e) {
+            if (!edgeResizeWin) return;
+            const MIN_W = 150, MIN_H = 150; // CSSのmin-width/min-heightと合わせる
+            const dx = e.clientX - edgeStart.x;
+            const dy = e.clientY - edgeStart.y;
+            if (edgeResizeDir.includes('r')) {
+                edgeResizeWin.style.width = Math.max(MIN_W, edgeStart.w + dx) + 'px';
+            }
+            if (edgeResizeDir.includes('l')) {
+                // 左枠は右端を固定したまま幅と位置を同時に動かす
+                const newW = Math.max(MIN_W, edgeStart.w - dx);
+                edgeResizeWin.style.width = newW + 'px';
+                edgeResizeWin.style.left = (edgeStart.left + (edgeStart.w - newW)) + 'px';
+            }
+            if (edgeResizeDir.includes('b')) {
+                edgeResizeWin.style.height = Math.max(MIN_H, edgeStart.h + dy) + 'px';
+            }
+        }
+        function onEdgeResizeEnd() {
+            if (edgeResizeWin) {
+                const winId = edgeResizeWin.id;
+                // エディタのレイアウト再計算（カーソル・IME位置ズレ防止）
+                const editor = window.cmGetEditor && window.cmGetEditor(winId);
+                if (editor) editor.refresh();
+                notifyChange(winId);
+            }
+            edgeResizeWin = null;
+            document.removeEventListener('mousemove', onEdgeResizeMove);
+            document.removeEventListener('mouseup', onEdgeResizeEnd);
+        }
         
         function bringToFront(id){ const w=document.getElementById(id); zIndexCounter++; w.style.zIndex=zIndexCounter; document.querySelectorAll('.window').forEach(e=>e.classList.remove('active')); w.classList.add('active'); notifyChange(id); }
         function moveWindow(winId, dir) { const el = document.getElementById(winId); const parent = el.parentNode; if (dir === -1) { if (el.previousElementSibling) { parent.insertBefore(el, el.previousElementSibling); manualSaveAll(); } } else { if (el.nextElementSibling) { parent.insertBefore(el.nextElementSibling, el); manualSaveAll(); } } }
@@ -846,32 +939,79 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             notifyChange(winId); 
         }
         
-        function showMedia(id,blob,type) { 
-            const c=document.getElementById(`media-content-${id}`); c.innerHTML=''; 
-            const url=URL.createObjectURL(blob); let el; 
-            if(type.startsWith('image/')) { el=document.createElement('img'); el.src=url; } 
-            else if(type.startsWith('video/')) { el=document.createElement('video'); el.src=url; el.controls=true; el.loop=true; el.muted=true; el.playsInline=true; } 
-            if(el){ 
-                el.className='media-content'; c.appendChild(el); 
-                const layer = document.getElementById(`media-${id}`);
+        function showMedia(id,blob,type,rate=1) {
+            const c=document.getElementById(`media-content-${id}`); c.innerHTML='';
+            const layer = document.getElementById(`media-${id}`);
+
+            // 前回の速度バーが残っていれば消してレイアウトをリセット
+            const oldBar = layer.querySelector('.media-speed-bar');
+            if (oldBar) oldBar.remove();
+            c.style.height='100%'; c.style.flex=''; c.style.minHeight='';
+            c.style.flexDirection=''; c.style.gap='';
+
+            const url=URL.createObjectURL(blob); let el;
+            if(type.startsWith('image/')) { el=document.createElement('img'); el.src=url; }
+            else if(type.startsWith('video/')) {
+                el=document.createElement('video'); el.src=url; el.controls=true; el.loop=true; el.muted=true; el.playsInline=true;
+                el.playbackRate = rate;
+
+                // 再生速度バー（0.1〜3.0倍の無段階スライダー）
+                const bar = document.createElement('div');
+                bar.className = 'media-speed-bar';
+                bar.innerHTML = `<span>⏩</span>
+                    <input type="range" id="media-rate-slider-${id}" min="0.1" max="3" step="0.05" value="${rate}" oninput="setMediaRate(${id}, this.value)">
+                    <span class="media-rate-label" id="media-rate-label-${id}">${Number(rate).toFixed(2)}x</span>
+                    <button class="btn-tool" onclick="setMediaRate(${id}, 1)">1x</button>`;
+                layer.insertBefore(bar, c);
+                // バーの分だけ動画領域を縮める
+                c.style.height='auto'; c.style.flex='1'; c.style.minHeight='0';
+            }
+            else if(type.startsWith('audio/')) {
+                // BGM用の音声プレイヤー（ループ再生）。🎬ボタンでレイヤーを隠しても再生は続く
+                el=document.createElement('audio'); el.src=url; el.controls=true; el.loop=true;
+                el.style.width='90%';
+                c.style.flexDirection='column'; c.style.gap='10px';
+                const label=document.createElement('div');
+                label.className='media-audio-label';
+                label.textContent='🎵 BGM（ループ再生）';
+                c.appendChild(label);
+            }
+            if(el){
+                el.className='media-content'; c.appendChild(el);
                 layer.classList.add('show');
-                layer.classList.remove('hidden-media'); 
-                
+                layer.classList.remove('hidden-media');
+
                 document.getElementById(`win-${id}`).classList.add('media-mode');
 
                 document.getElementById(`btn-media-toggle-${id}`).style.display = 'inline-block';
                 document.getElementById(`btn-media-del-${id}`).style.display = 'inline-block';
-            } 
+            }
+        }
+
+        // 動画の再生速度を変更する（スライダー・1xボタンから呼ばれる）
+        function setMediaRate(id, val) {
+            const v = Math.min(3, Math.max(0.1, parseFloat(val) || 1));
+            const vid = document.querySelector(`#media-content-${id} video`);
+            if (vid) vid.playbackRate = v;
+            const label = document.getElementById(`media-rate-label-${id}`);
+            if (label) label.textContent = v.toFixed(2) + 'x';
+            const slider = document.getElementById(`media-rate-slider-${id}`);
+            if (slider && parseFloat(slider.value) !== v) slider.value = v;
+            notifyChange('win-' + id); // 速度も保存対象にする
         }
         function handleDragOver(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.add('drag-over-active'); }
         function handleDragLeave(e,el){ e.preventDefault(); e.stopPropagation(); el.closest('.window').classList.remove('drag-over-active'); }
         function handleDrop(e,winId){ e.preventDefault(); e.stopPropagation(); document.getElementById(winId).classList.remove('drag-over-active'); const f=e.dataTransfer.files[0]; if(!f)return; const id=parseInt(winId.split('-')[1]); blobCache[id]={blob:f, type:f.type}; showMedia(id,f,f.type); notifyChange(winId); }
-        function closeMedia(id){ 
+        function closeMedia(id){
             if(!confirm("メディアを削除しますか？")) return;
-            document.getElementById(`media-${id}`).classList.remove('show');
-            document.getElementById(`media-${id}`).classList.remove('hidden-media');
-            
-            const c=document.getElementById(`media-content-${id}`); 
+            const layer=document.getElementById(`media-${id}`);
+            layer.classList.remove('show');
+            layer.classList.remove('hidden-media');
+            // 速度バーも一緒に削除
+            const bar=layer.querySelector('.media-speed-bar');
+            if(bar) bar.remove();
+
+            const c=document.getElementById(`media-content-${id}`);
             if(c.firstChild) URL.revokeObjectURL(c.firstChild.src); 
             c.innerHTML=''; 
             delete blobCache[id]; 

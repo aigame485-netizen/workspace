@@ -84,11 +84,14 @@ async function initCliViewer() {
             theme: "workspace-dark",
             lineWrapping: true,
             readOnly: true,
+            // IME対策: 変換候補ウィンドウを実カーソル位置の真下に出す（cm-init.js参照）
+            inputStyle: "contenteditable",
+            spellcheck: false,
             viewportMargin: Infinity
         });
         cliEditorInstance.getWrapperElement().style.fontSize = cliFontSize + "px";
-        cliEditorInstance.getWrapperElement().style.fontFamily =
-            "'Segoe UI', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif";
+        // 書体はCSS変数で一元管理（ヘッダーの書体セレクトから変更される）
+        cliEditorInstance.getWrapperElement().style.fontFamily = "var(--editor-font)";
         setTimeout(() => cliEditorInstance.refresh(), 100);
 
         // ピンモードのタップハンドラ設定

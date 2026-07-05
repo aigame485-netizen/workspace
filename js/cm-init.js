@@ -23,12 +23,18 @@ function createEditor(textarea, winId, fontSize = "14px") {
         mode: "markdown",
         theme: "workspace-dark",
         lineWrapping: true,
+        // IME対策: デフォルトの"textarea"方式は隠しtextareaを基準に変換候補が表示され、
+        // 候補ウィンドウが入力中の行に被る。contenteditable方式なら実際のカーソル位置の
+        // 真下に候補が出る（VSCodeと同じ挙動になる）
+        inputStyle: "contenteditable",
+        spellcheck: false,
         viewportMargin: Infinity // スクロールバー制御用
     });
 
     // 初期フォントサイズ設定
     editor.getWrapperElement().style.fontSize = fontSize;
-    editor.getWrapperElement().style.fontFamily = "'Segoe UI', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif";
+    // 書体はCSS変数で一元管理（ヘッダーの書体セレクトから変更される）
+    editor.getWrapperElement().style.fontFamily = "var(--editor-font)";
     
     // フォント適用やDOMへの追加が完了したあとにレイアウトを再計算する
     setTimeout(() => {
@@ -44,6 +50,18 @@ function createEditor(textarea, winId, fontSize = "14px") {
             window.notifyChange(winId);
         }
     });
+
+    // ウィンドウのリサイズを検知してレイアウトを再計算する
+    // （refreshしないとカーソル座標のキャッシュがズレて、カーソル描画やIME位置が狂う）
+    if (typeof ResizeObserver !== 'undefined') {
+        let refreshTimer = null;
+        const resizeObserver = new ResizeObserver(() => {
+            clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(() => editor.refresh(), 100);
+        });
+        resizeObserver.observe(editor.getWrapperElement());
+        editor._resizeObserver = resizeObserver; // destroy時に解除するため保持
+    }
 
     // 連動スクロール
     editor.on("scroll", function(cm) {
@@ -76,6 +94,7 @@ function getEditor(winId) {
 function destroyEditor(winId) {
     const editor = editorInstances[winId];
     if (editor) {
+        if (editor._resizeObserver) editor._resizeObserver.disconnect(); // リサイズ監視を解除
         editor.toTextArea(); // textareaに戻す
         delete editorInstances[winId];
     }

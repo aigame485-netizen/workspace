@@ -24,6 +24,11 @@
             outline-offset: 1px;
         }
 
+        :root {
+            /* エディタの書体（ヘッダーの書体セレクトで切替。JSから上書きされる） */
+            --editor-font: 'Segoe UI', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
+        }
+
         body {
             font-family: "Segoe UI", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", Meiryo, "Helvetica Neue", Arial, sans-serif;
             background-color: #1a202c;
@@ -45,8 +50,17 @@
             gap: 10px; flex-shrink: 0; z-index: 10000;
             box-shadow: 0 2px 10px rgba(0,0,0,0.5); overflow-x: auto; white-space: nowrap;
         }
-        header::-webkit-scrollbar { display: none; } 
+        header::-webkit-scrollbar { display: none; }
         h1 { font-size: 1rem; color: #a0aec0; margin-right: 5px; font-weight: normal; }
+
+        /* エディタ書体セレクト */
+        .font-select {
+            background-color: #2d3748; color: #e2e8f0;
+            border: 1px solid #4a5568; border-radius: 4px;
+            padding: 4px 6px; font-size: 0.75rem;
+            flex-shrink: 0; cursor: pointer; outline: none;
+        }
+        .font-select:hover { border-color: #63b3ed; }
 
         /* --- タブ表示 --- */
         .tabs-container {
@@ -145,11 +159,27 @@
             display: flex; flex-direction: column;
             width: 320px; height: 400px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            resize: both; overflow: hidden;
+            overflow: hidden;
             transition: border-color 0.2s, box-shadow 0.2s;
-            min-width: 150px; min-height: 150px; box-sizing: border-box; 
+            min-width: 150px; min-height: 150px; box-sizing: border-box;
         }
         .window.active { border-color: #63b3ed; box-shadow: 0 15px 35px rgba(0,0,0,0.7); }
+
+        /* --- PC用リサイズハンドル（左・右・下の枠 + 下両角） --- */
+        .win-resize-handle { position: absolute; z-index: 30; }
+        .handle-l  { left: 0;   top: 30px; bottom: 14px; width: 6px;  cursor: ew-resize; }
+        .handle-r  { right: 0;  top: 30px; bottom: 14px; width: 6px;  cursor: ew-resize; }
+        .handle-b  { bottom: 0; left: 14px; right: 14px; height: 6px; cursor: ns-resize; }
+        .handle-bl { left: 0;   bottom: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+        .handle-br { right: 0;  bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+        /* 右下角には従来通りグリップ目印を表示 */
+        .handle-br::after {
+            content: ""; position: absolute; right: 3px; bottom: 3px;
+            width: 7px; height: 7px;
+            border-right: 2px solid #718096; border-bottom: 2px solid #718096;
+        }
+        /* ドッキング中はリサイズ不可 */
+        .window.docked-bottom .win-resize-handle { display: none; }
         
         /* ドッキング（固定）状態のスタイル */
         .window.docked-bottom {
@@ -261,6 +291,19 @@
         .media-layer.hidden-media { display: none !important; } /* 強制非表示用 */
         
         .media-content { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+        /* --- 動画の再生速度バー --- */
+        .media-speed-bar {
+            flex-shrink: 0; width: 100%;
+            display: flex; align-items: center; gap: 6px;
+            padding: 4px 10px; background-color: rgba(26, 32, 44, 0.9);
+            color: #e2e8f0; font-size: 0.75rem;
+        }
+        .media-speed-bar input[type="range"] { flex-grow: 1; min-width: 50px; cursor: pointer; }
+        .media-rate-label { min-width: 44px; text-align: right; font-family: monospace; }
+
+        /* --- BGM（音声）プレイヤー --- */
+        .media-audio-label { color: #a0aec0; font-size: 0.85rem; }
         .btn-close-media {
             position: absolute; top: 10px; right: 10px; background-color: rgba(0,0,0,0.6);
             color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 10px; cursor: pointer;
@@ -335,6 +378,8 @@
                 position: relative !important; left: auto !important; top: auto !important;
                 resize: none !important; margin-bottom: 0; z-index: 1 !important; flex-shrink: 0;
             }
+            /* スマホはPC用リサイズハンドル無効（専用のmobile-resize-handleを使う） */
+            .win-resize-handle { display: none !important; }
             .window.docked-bottom { z-index: 9999 !important; }
 
             .win-header { cursor: default; }
