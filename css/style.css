@@ -155,6 +155,10 @@
         /* メディアモード時はメディア削除ボタンなどを右側に寄せるための調整 */
         .window.media-mode .win-tools {
             justify-content: flex-end;
+            /* 動画などがツールバー帯の裏に潜り込むため、帯を半透明にして上端が見切れないようにする */
+            background-color: rgba(26, 32, 44, 0.4);
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
         }
         .window {
             position: absolute; background-color: var(--editor-bg);
