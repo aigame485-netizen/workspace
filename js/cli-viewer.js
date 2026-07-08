@@ -18,6 +18,7 @@ let cliActiveTab = 'memo';         // 'memo' | 'instruction'
 let cliPinMode = false;            // ピンモード（タップで行をメモに転記）
 let cliPinTouchMoved = false;      // ピンモード: タッチ中にmoveしたか
 let cliDraftSaveTimer = null;      // 下書き自動保存タイマー
+let cliInstructionSaveTimer = null; // 指示パッドの自動保存タイマー
 let cliPendingServerContent = null; // サーバー側の新しい内容（更新バナー表示中）
 let cliImageMode = false;           // 現在開いているファイルが画像かどうか
 const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
@@ -99,6 +100,9 @@ async function initCliViewer() {
 
         // ピンモードのタップハンドラ設定
         setupPinMode(cliEditorInstance);
+
+        // 指示パッドの自動保存を初期化（localStorageから復元＋入力リスナー登録）
+        cliSetupInstructionAutosave();
     }
 
     // キャッシュから即表示 → 裏でサーバーから更新
@@ -980,6 +984,7 @@ function setupPinMode(editor) {
                 }
                 textarea.value += ref + '\n';
                 textarea.scrollTop = textarea.scrollHeight;
+                cliSaveInstructionDraft();  // 行転記もinputイベントが出ないので明示保存
                 setTimeout(() => textarea.focus(), 300);
             } else {
                 const sectionWithLine = sectionName
@@ -1106,7 +1111,7 @@ function cliOnEditorChange() {
         if (cliHasUnsavedChanges) {
             cliDraftSaveTimer = setTimeout(() => {
                 cliSaveDraft(cliCurrentFile, currentText);
-            }, 2000);
+            }, 1000);  // 作業場（付箋）の自動保存と同じ1秒に統一
         } else {
             // 元に戻った場合、下書きを消す
             cliClearDraft(cliCurrentFile);
@@ -1277,6 +1282,49 @@ function cliClearInstruction() {
     const textarea = document.getElementById('cli-instruction-content');
     if (textarea.value.trim() && !confirm('指示パッドの内容を消去しますか？')) return;
     textarea.value = '';
+    cliSaveInstructionDraft();  // 空になった状態をlocalStorageへも反映
+}
+
+// =========================================
+// 指示パッドの自動保存・復元（localStorage）
+// ブラウザのフォーム自動復元に頼らず、指示パッドの内容だけを
+// 明示的に保存する。別画面を介した指示出しでも内容が残る。
+// =========================================
+
+const CLI_INSTRUCTION_DRAFT_KEY = 'cli_instruction_draft';
+
+// 現在の指示パッドの内容をlocalStorageへ保存
+function cliSaveInstructionDraft() {
+    try {
+        const textarea = document.getElementById('cli-instruction-content');
+        if (!textarea) return;
+        localStorage.setItem(CLI_INSTRUCTION_DRAFT_KEY, textarea.value);
+    } catch (e) { /* 保存失敗は無視 */ }
+}
+
+// 変更のたびにデバウンスして保存（作業場・CLI本文と同じ1秒）
+function cliScheduleInstructionSave() {
+    if (cliInstructionSaveTimer) clearTimeout(cliInstructionSaveTimer);
+    cliInstructionSaveTimer = setTimeout(cliSaveInstructionDraft, 1000);
+}
+
+// localStorageから指示パッドの内容を復元
+function cliRestoreInstructionDraft() {
+    try {
+        const textarea = document.getElementById('cli-instruction-content');
+        if (!textarea) return;
+        const saved = localStorage.getItem(CLI_INSTRUCTION_DRAFT_KEY);
+        if (saved !== null) textarea.value = saved;
+    } catch (e) { /* 復元失敗は無視 */ }
+}
+
+// 自動保存のセットアップ（初回初期化時のみ：復元＋入力リスナー登録）
+function cliSetupInstructionAutosave() {
+    const textarea = document.getElementById('cli-instruction-content');
+    if (!textarea) return;
+    cliRestoreInstructionDraft();
+    // キーボード入力はデバウンス保存（挿入系はvalue直接書換のため各所で明示保存する）
+    textarea.addEventListener('input', cliScheduleInstructionSave);
 }
 
 // --- カーソル位置への共通挿入ヘルパー ---
@@ -1296,6 +1344,7 @@ function cliInsertIntoInstruction(text) {
     textarea.value = before + insert + val.substring(end);
     const pos = start + insert.length;
     textarea.selectionStart = textarea.selectionEnd = pos;
+    cliSaveInstructionDraft();  // 挿入はinputイベントが出ないので明示保存
     setTimeout(() => textarea.focus(), 50);
 }
 
@@ -1658,6 +1707,7 @@ function fbInsertPath(path) {
 
     textarea.value = text.substring(0, start) + insert + text.substring(end);
     textarea.selectionStart = textarea.selectionEnd = start + insert.length;
+    cliSaveInstructionDraft();  // 挿入はinputイベントが出ないので明示保存
 
     // モーダルを閉じる
     closeFolderBrowser();

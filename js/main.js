@@ -600,7 +600,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 <div class="win-header" onmousedown="startDrag(event,'${winId}')">
                     <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', -1)">↑</button>
                     <button class="btn-header-icon mobile-only" onclick="moveWindow('${winId}', 1)">↓</button>
-                    <input type="text" class="win-title-input" value="${initialTitle}" onchange="notifyChange('${winId}')" onmousedown="event.stopPropagation()">
+                    <input type="text" class="win-title-input" value="${initialTitle}" autocomplete="off" onchange="notifyChange('${winId}')" onmousedown="event.stopPropagation()">
                     <div class="win-drag-area"></div>
                     <button class="btn-delete" onclick="removeWindow('${winId}')">×</button>
                 </div>
@@ -626,7 +626,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                         <button class="btn-tool mobile-only ${dockBtnClass}" id="btn-dock-${idNum}" onclick="toggleDock(${idNum})" title="画面下に固定">⚓</button>
                     </div>
                     
-                    <textarea id="text-${idNum}" style="font-size:${targetFontSize};" oninput="notifyChange('${winId}')"></textarea>
+                    <textarea id="text-${idNum}" autocomplete="off" style="font-size:${targetFontSize};" oninput="notifyChange('${winId}')"></textarea>
                     
                     <div id="media-${idNum}" class="media-layer">
                         <div id="media-content-${idNum}" style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;"></div>

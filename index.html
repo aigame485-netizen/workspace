@@ -118,7 +118,7 @@
                 <button class="btn-tool" onclick="cliDismissUpdateBanner()">✕</button>
             </div>
             <div class="cli-viewer-area" id="cli-viewer-area">
-                <textarea id="cli-viewer-textarea" style="display:none;"></textarea>
+                <textarea id="cli-viewer-textarea" autocomplete="off" style="display:none;"></textarea>
             </div>
 
             <div class="cli-memo-area" id="cli-memo-area">
@@ -133,8 +133,8 @@
                 <div class="cli-memo-body" id="cli-memo-body">
                     <!-- メモタブ -->
                     <div class="cli-tab-content active" id="cli-tab-memo">
-                        <input type="text" class="input-text" id="cli-memo-section" placeholder="セクション名（任意）">
-                        <textarea id="cli-memo-content" class="input-text" rows="3" placeholder="修正指示やメモを入力..."></textarea>
+                        <input type="text" class="input-text" id="cli-memo-section" autocomplete="off" placeholder="セクション名（任意）">
+                        <textarea id="cli-memo-content" class="input-text" rows="3" autocomplete="off" placeholder="修正指示やメモを入力..."></textarea>
                         <div style="display:flex; gap:8px;">
                             <button class="btn-control btn-cloud" onclick="cliSendMemo()" style="flex:1;">📤 メモを送信</button>
                             <button class="btn-tool" onclick="cliShowMemoHistory()" title="送信済みメモ">📋</button>
@@ -153,7 +153,7 @@
                     </div>
                     <!-- 指示パッドタブ -->
                     <div class="cli-tab-content" id="cli-tab-instruction">
-                        <textarea id="cli-instruction-content" class="input-text" rows="4" placeholder="AIへの指示をここに書き溜める...&#10;長押しで行テキストを挿入できます"></textarea>
+                        <textarea id="cli-instruction-content" class="input-text" rows="4" autocomplete="off" placeholder="AIへの指示をここに書き溜める...&#10;長押しで行テキストを挿入できます"></textarea>
                         <div class="cli-instruction-actions">
                             <button class="btn-path-browse" onclick="cliOpenFolderBrowser()">📂 パス</button>
                             <button class="btn-path-current" onclick="cliInsertCurrentPath()" title="今開いているファイルのパスを挿入">📄 現パス</button>
@@ -170,7 +170,7 @@
                             </div>
                             <div class="cli-template-list" id="cli-template-list"></div>
                             <div class="cli-template-register">
-                                <textarea id="cli-template-input" placeholder="新しいテンプレ文を入力..." rows="2"></textarea>
+                                <textarea id="cli-template-input" autocomplete="off" placeholder="新しいテンプレ文を入力..." rows="2"></textarea>
                                 <div class="cli-template-register-actions">
                                     <button class="btn-tmpl-add" onclick="cliRegisterTemplate()">＋ 登録</button>
                                     <button class="btn-tmpl-fromtext" onclick="cliRegisterTemplateFromInstruction()" title="指示パッドの現在の内容をテンプレ登録">指示内容から</button>
