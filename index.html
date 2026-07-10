@@ -26,6 +26,12 @@
             <label for="syncToggle" class="switch-label">連動</label>
         </div>
 
+        <!-- セリフ照合の一致率（%） -->
+        <div class="control-group serifu-threshold-box" title="セリフ使用済み判定の一致率（%）。👑ウィンドウと照合します">
+            <span class="switch-label">👑照合</span>
+            <input type="number" id="serifuThresholdInput" min="60" max="100" step="5" value="90" onchange="changeSerifuThreshold(this.value)">
+        </div>
+
         <!-- タブ表示 -->
         <div class="tabs-container">
             <div class="tab active" id="tab-btn-1" onclick="switchTab(1)">
@@ -286,6 +292,9 @@
     
     <!-- CodeMirror初期化 -->
     <script src="js/cm-init.js"></script>
+
+    <!-- セリフ使用済みチェッカー -->
+    <script src="js/serifu-check.js"></script>
 
     <!-- CLI Viewer -->
     <script src="js/cli-viewer.js"></script>

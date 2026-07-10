@@ -75,6 +75,9 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             updateBoardDisplay();
             loadFromDB();
 
+            // セリフ使用済みチェッカーの初期化（メイン指定・一致率の復元）
+            if (window.initSerifuCheck) window.initSerifuCheck();
+
             // CLIビューアをデフォルト表示にする
             toggleCliViewer();
         };
@@ -607,6 +610,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 <div class="win-body" onmousedown="bringToFront('${winId}')" ondragover="handleDragOver(event,this)" ondragleave="handleDragLeave(event,this)" ondrop="handleDrop(event,'${winId}')">
                     <div class="win-tools">
                         <div class="tools-text-group">
+                            <button class="btn-tool btn-main-toggle" id="btn-main-${idNum}" onclick="toggleMainWindow(${idNum})" title="メインに指定（他ウィンドウの「」内セリフを照合して使用済みを黄色表示）">👑</button>
                             <button class="btn-tool" onclick="pasteToArea(${idNum})">Paste</button>
                             <button class="btn-tool btn-format" onclick="formatContent(${idNum})">整形</button>
                             <div style="width:5px;"></div>

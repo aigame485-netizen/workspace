@@ -72,6 +72,10 @@ function createEditor(textarea, winId, fontSize = "14px") {
         if (typeof window.notifyChange === 'function') {
             window.notifyChange(winId);
         }
+        // セリフ使用済みチェッカーに再照合を予約（デバウンス付き）
+        if (typeof window.scheduleSerifuCheck === 'function') {
+            window.scheduleSerifuCheck();
+        }
     });
 
     // ウィンドウのリサイズを検知してレイアウトを再計算する
@@ -101,6 +105,10 @@ function createEditor(textarea, winId, fontSize = "14px") {
     });
 
     editorInstances[winId] = editor;
+    // タブ切替や復元でエディタが作り直された時にも照合し直す
+    if (typeof window.scheduleSerifuCheck === 'function') {
+        window.scheduleSerifuCheck();
+    }
     return editor;
 }
 

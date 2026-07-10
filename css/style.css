@@ -291,6 +291,24 @@
         .btn-format { background-color: #553c9a; color: #e9d8fd; }
         .btn-active { background-color: #3182ce; color: white; } /* アクティブ状態用 */
 
+        /* --- セリフ使用済みチェッカー --- */
+        /* 👑メイン指定ボタン（アクティブ時は金色） */
+        .btn-main-toggle { padding: 4px 5px; background-color: #2d3748; }
+        .btn-main-toggle.btn-active { background-color: #b7791f; }
+        /* 使用済みセリフのハイライト（黄色。既存の青選択・緑文字列と被らない色） */
+        .cm-used-serifu {
+            background-color: rgba(236, 201, 75, 0.28);
+            border-bottom: 1px dashed #ecc94b;
+            border-radius: 2px;
+        }
+        /* ヘッダーの一致率入力 */
+        .serifu-threshold-box input[type="number"] {
+            width: 44px; background-color: #1a202c; color: #ecc94b;
+            border: 1px solid #4a5568; border-radius: 3px;
+            font-size: 0.75rem; padding: 2px 2px 2px 6px; text-align: center;
+        }
+        .serifu-threshold-box input[type="number"]:focus { border-color: #ecc94b; outline: none; }
+
         .mobile-resize-handle {
             height: 12px; background-color: #2d3748; cursor: row-resize; flex-shrink: 0;
             display: none; justify-content: center; align-items: center;
