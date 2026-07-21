@@ -611,7 +611,6 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                     <div class="win-tools">
                         <div class="tools-text-group">
                             <button class="btn-tool btn-main-toggle" id="btn-main-${idNum}" onclick="toggleMainWindow(${idNum})" title="メインに指定（他ウィンドウの「」内セリフを照合して使用済みを黄色表示）">👑</button>
-                            <button class="btn-tool" onclick="pasteToArea(${idNum})">Paste</button>
                             <button class="btn-tool btn-format" onclick="formatContent(${idNum})">整形</button>
                             <div style="width:5px;"></div>
                             <button class="btn-tool btn-font" onclick="changeFontSize(${idNum}, -2)">A-</button>
