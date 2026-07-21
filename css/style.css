@@ -423,6 +423,17 @@
             .pc-only { display: none; }
             /* スマホで1/2ボタンなどを確実に表示させるための調整 */
             .win-tools { overflow-x: auto; }
+
+            /* --- 全幅ウィンドウは画面端まで広げ、左右の枠・余白を消して本文を最大化 --- */
+            /* 1/2表示のウィンドウには付かないので、そちらは従来通り枠が残る */
+            .window.win-mobile-full:not(.docked-bottom) {
+                width: calc(100% + 20px) !important; /* #canvasの左右padding(10px×2)を打ち消して端まで伸ばす */
+                margin-left: -10px; margin-right: -10px;
+                border-left: none; border-right: none; border-radius: 0;
+            }
+            /* 本文の左右余白も詰めて、可能な限り文字列を広くする */
+            .window.win-mobile-full:not(.docked-bottom) .CodeMirror-scroll { padding-left: 6px; padding-right: 6px; }
+            .window.win-mobile-full:not(.docked-bottom) textarea { padding-left: 6px; padding-right: 6px; }
         }
 
         /* =========================================

@@ -626,6 +626,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                         <button class="btn-tool btn-danger" id="btn-media-del-${idNum}" onclick="closeMedia(${idNum})" title="メディア削除" style="display:none; padding:4px 6px;">🗑️</button>
                         <button class="btn-tool" id="btn-media-toggle-${idNum}" onclick="toggleMediaVisibility(${idNum})" title="表示切替" style="display:none;">🎬</button>
 
+                        <button class="btn-tool mobile-only" id="btn-readonly-${idNum}" onclick="toggleReadOnly(${idNum})" title="タップで閲覧モード（スマホで長押しコピー可）">📝</button>
                         <button class="btn-tool mobile-only" id="btn-width-${idNum}" onclick="toggleMobileWidth(${idNum})">${widthBtnLabel}</button>
                         <button class="btn-tool mobile-only ${dockBtnClass}" id="btn-dock-${idNum}" onclick="toggleDock(${idNum})" title="画面下に固定">⚓</button>
                     </div>
@@ -645,6 +646,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 <div class="win-resize-handle handle-br" onmousedown="startEdgeResize(event,'${winId}','br')"></div>`;
             
             document.getElementById('canvas').appendChild(div);
+
+            if (isMobile) updateMobileFullClass(div); // 全幅なら端まで伸ばすクラスを付与
 
             div.addEventListener('mouseup', ()=> { if(currentDragWin!==div) notifyChange(winId); });
             // 連動スクロールはCodeMirror側（cm-init.js）で処理するため、ここでは登録しない
@@ -723,13 +726,41 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             document.removeEventListener('touchend', onDockResizeEnd);
         }
 
-        function toggleMobileWidth(idNum) { 
-            const win = document.getElementById(`win-${idNum}`); 
-            const btn = document.getElementById(`btn-width-${idNum}`); 
-            const currentW = win.style.width; 
-            if (currentW === '100%' || !currentW) { win.style.width = 'calc(50% - 5px)'; btn.textContent = 'Full'; } 
-            else { win.style.width = '100%'; btn.textContent = '1/2'; } 
-            notifyChange(`win-${idNum}`); 
+        function toggleMobileWidth(idNum) {
+            const win = document.getElementById(`win-${idNum}`);
+            const btn = document.getElementById(`btn-width-${idNum}`);
+            const currentW = win.style.width;
+            if (currentW === '100%' || !currentW) { win.style.width = 'calc(50% - 5px)'; btn.textContent = 'Full'; }
+            else { win.style.width = '100%'; btn.textContent = '1/2'; }
+            updateMobileFullClass(win); // 全幅⇔1/2で端まで伸ばすクラスを付け外し
+            notifyChange(`win-${idNum}`);
+        }
+
+        // 全幅(100%)ウィンドウにだけ .win-mobile-full を付ける（左右の枠を消して端まで広げる用）
+        // 1/2表示のときは付けないので、従来通り枠が残る
+        function updateMobileFullClass(win) {
+            if (!win) return;
+            const w = win.style.width;
+            const isFull = (w === '100%' || !w);
+            win.classList.toggle('win-mobile-full', isFull);
+        }
+
+        // スマホ用: ウィンドウを閲覧(readOnly)⇔編集で切り替える。
+        // 閲覧モードにするとCodeMirrorがcontenteditable=falseになり、
+        // スマホのネイティブ長押し（選択→コピー）が効くようになる（CLIビューアと同じ仕組み）。
+        function toggleReadOnly(idNum) {
+            const winId = `win-${idNum}`;
+            const editor = (typeof window.cmGetEditor === 'function') ? window.cmGetEditor(winId) : null;
+            const btn = document.getElementById(`btn-readonly-${idNum}`);
+            if (!editor) return;
+            const nowReadOnly = editor.getOption('readOnly');
+            if (nowReadOnly) {
+                editor.setOption('readOnly', false);
+                if (btn) { btn.textContent = '📝'; btn.classList.remove('btn-active'); btn.title = 'タップで閲覧モード（スマホで長押しコピー可）'; }
+            } else {
+                editor.setOption('readOnly', true);
+                if (btn) { btn.textContent = '📖'; btn.classList.add('btn-active'); btn.title = '閲覧モード中（長押しコピー可）。タップで編集に戻す'; }
+            }
         }
 
         async function toggleDock(idNum) {
