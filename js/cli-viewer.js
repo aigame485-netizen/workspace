@@ -1,7 +1,7 @@
 // =========================================
 // CLI Viewer モジュール
 // PC上のClaude CLIがアップロードしたファイルを
-// スマホから閲覧し、メモ/フィードバックを送信する
+// スマホから閲覧・編集し、指示パッドでAIへの指示を作る
 // =========================================
 
 // --- 状態管理 ---
@@ -10,13 +10,11 @@ let cliEditorInstance = null;
 let cliCurrentFile = null;
 let cliFileList = [];
 let cliFontSize = 14;
-let cliMemoExpanded = true;
+let cliMemoExpanded = true;        // 下部パネル（指示パッド/提案）の展開状態
 let cliEditMode = false;           // 編集モードON/OFF
 let cliOriginalContent = '';       // 編集前の元テキスト（変更検知用）
 let cliHasUnsavedChanges = false;  // 未保存の変更があるか
-let cliActiveTab = 'memo';         // 'memo' | 'instruction'
-let cliPinMode = false;            // ピンモード（タップで行をメモに転記）
-let cliPinTouchMoved = false;      // ピンモード: タッチ中にmoveしたか
+let cliActiveTab = 'instruction';  // 'instruction' | 'proposals'
 let cliDraftSaveTimer = null;      // 下書き自動保存タイマー
 let cliInstructionSaveTimer = null; // 指示パッドの自動保存タイマー
 let cliPendingServerContent = null; // サーバー側の新しい内容（更新バナー表示中）
@@ -98,9 +96,6 @@ async function initCliViewer() {
         // 範囲選択時に文字数バッジへ選択文字数を表示する
         cliEditorInstance.on("cursorActivity", cliUpdateCharCount);
 
-        // ピンモードのタップハンドラ設定
-        setupPinMode(cliEditorInstance);
-
         // 指示パッドの自動保存を初期化（localStorageから復元＋入力リスナー登録）
         cliSetupInstructionAutosave();
     }
@@ -145,12 +140,6 @@ function toggleCliSidebar() {
         sidebar.classList.add('open');
         overlay.classList.add('show');
     }
-}
-
-// サイドバーのピンモードボタン用（スマホではサイドバーを閉じる、PCでは開いたまま）
-function cliPinFromSidebar() {
-    toggleCliPinMode();
-    if (!cliIsPcLayout()) toggleCliSidebar();
 }
 
 function closeCliSidebar() {
@@ -715,7 +704,7 @@ function cliChangeFontSize(delta) {
 }
 
 // =========================================
-// メモ / フィードバック
+// 下部パネル（指示パッド / 提案）の開閉
 // =========================================
 
 function toggleCliMemoExpand() {
@@ -733,140 +722,6 @@ function toggleCliMemoExpand() {
 
     // CodeMirrorのサイズを再計算
     if (cliEditorInstance) setTimeout(() => cliEditorInstance.refresh(), 100);
-}
-
-function expandCliMemo() {
-    if (!cliMemoExpanded) toggleCliMemoExpand();
-}
-
-async function cliSendMemo() {
-    if (!cliCurrentFile) {
-        alert('先にファイルを開いてください');
-        return;
-    }
-
-    const section = document.getElementById('cli-memo-section').value.trim();
-    const content = document.getElementById('cli-memo-content').value.trim();
-
-    if (!content) {
-        alert('メモ内容を入力してください');
-        return;
-    }
-
-    const pass = await getAuthPassword();
-    if (!pass) return;
-
-    // カーソル位置から行番号・行テキストを取得
-    let lineHint = null;
-    let lineText = null;
-    if (cliEditorInstance) {
-        const cursor = cliEditorInstance.getCursor();
-        if (cursor.line > 0) {
-            lineHint = cursor.line + 1;
-            lineText = (cliEditorInstance.getLine(cursor.line) || '').trim();
-            if (lineText.length > 80) lineText = lineText.substring(0, 80) + '…';
-        }
-    }
-
-    const memoData = {
-        targetFile: cliCurrentFile,
-        memo: {
-            section: section || null,
-            lineHint: lineHint,
-            lineText: lineText || null,
-            content: content
-        }
-    };
-
-    // 暗号化対応
-    let sendBody = JSON.stringify(memoData);
-    const encKey = await getEncryptionKey();
-    if (encKey) {
-        const encObj = await encryptData(sendBody, encKey);
-        sendBody = JSON.stringify({ encrypted: true, payload: encObj, targetFile: cliCurrentFile });
-    }
-
-    try {
-        updateStatus('メモ送信中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_memo_save`;
-        const res = await fetch(url, { method: 'POST', body: sendBody });
-        const json = await res.json();
-
-        if (json.status === 'success') {
-            updateStatus('メモ送信完了', true);
-            document.getElementById('cli-memo-section').value = '';
-            document.getElementById('cli-memo-content').value = '';
-            alert('メモを送信しました ✓');
-        } else {
-            throw new Error(json.message);
-        }
-    } catch (e) {
-        alert('メモ送信失敗: ' + e.message);
-        updateStatus('メモ送信失敗', false, true);
-    }
-}
-
-async function cliShowMemoHistory() {
-    if (!cliCurrentFile) {
-        alert('先にファイルを開いてください');
-        return;
-    }
-
-    const pass = await getAuthPassword();
-    if (!pass) return;
-
-    try {
-        updateStatus('メモ取得中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_memo_list&path=${encodeURIComponent(cliCurrentFile)}`;
-        const res = await fetch(url, { method: 'POST' });
-        const json = await res.json();
-
-        if (json.status === 'success') {
-            const memos = json.memos || [];
-
-            if (memos.length === 0) {
-                alert('このファイルへのメモはありません');
-                updateStatus('Ready', true);
-                return;
-            }
-
-            // 暗号化メモの復号処理
-            const encKey = await getEncryptionKey();
-            const processed = [];
-            for (const m of memos) {
-                if (m.encrypted && m.payload) {
-                    if (encKey) {
-                        try {
-                            const decrypted = await decryptData(m.payload, encKey);
-                            const parsed = JSON.parse(decrypted);
-                            processed.push({ ...parsed.memo, id: m.id, createdAt: m.createdAt });
-                        } catch (_e) {
-                            processed.push({ content: '[復号失敗]', createdAt: m.createdAt });
-                        }
-                    } else {
-                        processed.push({ content: '[暗号化データ — キー未設定]', createdAt: m.createdAt });
-                    }
-                } else {
-                    processed.push(m);
-                }
-            }
-
-            let display = processed.map((m, i) => {
-                const sec = m.section ? `[${m.section}]` : '';
-                const line = m.lineHint ? `L${m.lineHint}` : '';
-                const date = m.createdAt ? new Date(m.createdAt).toLocaleString('ja-JP') : '';
-                return `${i + 1}. ${sec}${line} ${m.content}\n   (${date})`;
-            }).join('\n\n');
-
-            alert(`📋 送信済みメモ (${memos.length}件)\n\n${display}`);
-            updateStatus('Ready', true);
-        } else {
-            throw new Error(json.message);
-        }
-    } catch (e) {
-        alert('メモ取得失敗: ' + e.message);
-        updateStatus('メモ取得失敗', false, true);
-    }
 }
 
 // =========================================
@@ -930,103 +785,6 @@ async function cliSaveFileListToCache(files) {
     try {
         await setSetting('cli_file_list_cache', JSON.stringify(files));
     } catch (e) { /* 無視 */ }
-}
-
-// =========================================
-// ピンモード（タップで行をメモに転記）
-// =========================================
-
-function setupPinMode(editor) {
-    const wrapper = editor.getWrapperElement();
-
-    wrapper.addEventListener('touchstart', () => {
-        cliPinTouchMoved = false;
-    }, { passive: true });
-
-    wrapper.addEventListener('touchmove', () => {
-        cliPinTouchMoved = true;
-    }, { passive: true });
-
-    wrapper.addEventListener('touchend', (e) => {
-        if (!cliPinMode || cliPinTouchMoved) return;
-
-        // ピンモードON + タップ（スクロールしてない）のみ発火
-        setTimeout(() => {
-            const cursor = editor.getCursor();
-            const line = cursor.line;
-            const lineNum = line + 1;
-            const lineText = editor.getLine(line) || '';
-            const linePreview = lineText.length > 30 ? lineText.substring(0, 30) + '…' : lineText;
-
-            // 上方向に最も近い見出し（# で始まる行）を検索
-            let sectionName = '';
-            for (let i = line; i >= 0; i--) {
-                const lt = editor.getLine(i);
-                if (lt && /^#{1,4}\s+/.test(lt)) {
-                    sectionName = lt.replace(/^#+\s*/, '').trim();
-                    break;
-                }
-            }
-
-            // フィードバック表示
-            const touch = e.changedTouches[0];
-            if (touch) {
-                showPinFeedback(touch.clientX, touch.clientY, `L${lineNum}: ${linePreview || '(空行)'}`);
-            }
-
-            // アクティブタブに応じて動作を分岐
-            if (cliActiveTab === 'instruction') {
-                expandCliMemo();
-                const textarea = document.getElementById('cli-instruction-content');
-                const ref = `[L${lineNum}] ${lineText.trim()}`;
-                if (textarea.value && !textarea.value.endsWith('\n')) {
-                    textarea.value += '\n';
-                }
-                textarea.value += ref + '\n';
-                textarea.scrollTop = textarea.scrollHeight;
-                cliSaveInstructionDraft();  // 行転記もinputイベントが出ないので明示保存
-                setTimeout(() => textarea.focus(), 300);
-            } else {
-                const sectionWithLine = sectionName
-                    ? `${sectionName} (L${lineNum}: ${lineText.trim().substring(0, 40)})`
-                    : `L${lineNum}: ${lineText.trim().substring(0, 50)}`;
-                document.getElementById('cli-memo-section').value = sectionWithLine;
-                expandCliMemo();
-
-                setTimeout(() => {
-                    const memoContent = document.getElementById('cli-memo-content');
-                    memoContent.focus();
-                    memoContent.placeholder = `L${lineNum} "${linePreview}" への修正指示...`;
-                }, 300);
-            }
-        }, 50);
-    }, { passive: true });
-}
-
-function toggleCliPinMode() {
-    cliPinMode = !cliPinMode;
-    const btn = document.getElementById('cli-pin-btn');
-    if (cliPinMode) {
-        btn.classList.add('cli-pin-active');
-        btn.textContent = '📌 ON';
-    } else {
-        btn.classList.remove('cli-pin-active');
-        btn.textContent = '📌';
-    }
-}
-
-function showPinFeedback(x, y, text) {
-    const existing = document.querySelector('.cli-longpress-indicator');
-    if (existing) existing.remove();
-
-    const indicator = document.createElement('div');
-    indicator.className = 'cli-longpress-indicator';
-    indicator.textContent = '📌 ' + text;
-    indicator.style.left = Math.min(x, window.innerWidth - 200) + 'px';
-    indicator.style.top = (y - 40) + 'px';
-    document.body.appendChild(indicator);
-
-    setTimeout(() => indicator.remove(), 1500);
 }
 
 // =========================================
@@ -1229,7 +987,7 @@ function showCliSaveToast() {
 }
 
 // =========================================
-// タブ切替（メモ / 指示パッド）
+// タブ切替（指示パッド / 提案）
 // =========================================
 
 function cliSwitchTab(tabName) {
@@ -1241,7 +999,6 @@ function cliSwitchTab(tabName) {
     });
 
     // コンテンツの表示切替
-    document.getElementById('cli-tab-memo').classList.toggle('active', tabName === 'memo');
     document.getElementById('cli-tab-instruction').classList.toggle('active', tabName === 'instruction');
     document.getElementById('cli-tab-proposals').classList.toggle('active', tabName === 'proposals');
 
@@ -1795,34 +1552,6 @@ function cliFolderSearch(query) {
 }
 
 // =========================================
-// メモ全削除
-// =========================================
-
-async function cliDeleteAllMemos() {
-    if (!confirm('送信済みメモを全て削除しますか？\n（この操作は取り消せません）')) return;
-
-    const pass = await getAuthPassword();
-    if (!pass) return;
-
-    try {
-        updateStatus('全メモ削除中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_memo_delete_all`;
-        const res = await fetch(url, { method: 'POST' });
-        const json = await res.json();
-
-        if (json.status === 'success') {
-            updateStatus('全メモ削除完了', true);
-            alert(`${json.deletedCount}件のメモファイルを削除しました`);
-        } else {
-            throw new Error(json.message);
-        }
-    } catch (e) {
-        alert('全メモ削除失敗: ' + e.message);
-        updateStatus('全メモ削除失敗', false, true);
-    }
-}
-
-// =========================================
 // IndexedDB 下書き自動保存
 // =========================================
 
@@ -2347,4 +2076,4 @@ function cliUpdateProposalsBadge() {
     }
 }
 
-console.log("✅ CLI Viewer モジュール読み込み完了（ピンモード・下書き自動保存・メモ全削除・文字数カウント・更新通知・提案ビューア対応）");
+console.log("✅ CLI Viewer モジュール読み込み完了（下書き自動保存・文字数カウント・更新通知・提案ビューア対応）");

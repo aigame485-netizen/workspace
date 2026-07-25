@@ -564,7 +564,7 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         }
 
-        /* メモエリア（タブ化） */
+        /* 下部パネル（指示パッド / 提案のタブ切替） */
         .cli-memo-area {
             flex-shrink: 0; background-color: #171923;
             border-top: 2px solid #4a5568;
@@ -598,10 +598,6 @@
         .cli-memo-body.collapsed { display: none; }
         .cli-tab-content { display: none; }
         .cli-tab-content.active { display: flex; flex-direction: column; gap: 8px; }
-        #cli-memo-content {
-            resize: vertical; min-height: 60px; max-height: 200px;
-            line-height: 1.5;
-        }
 
         /* 指示パッド */
         #cli-instruction-content {
@@ -715,18 +711,6 @@
             transition: top 0.3s ease; white-space: nowrap;
         }
         .cli-copy-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
-
-        /* 長押しフィードバック */
-        .cli-longpress-indicator {
-            position: fixed; background-color: #6b46c1; color: white;
-            padding: 6px 12px; border-radius: 4px; font-size: 0.8rem;
-            z-index: 16000; pointer-events: none;
-            animation: cli-fadeIn 0.2s ease;
-        }
-        @keyframes cli-fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
 
         /* 更新バッジ */
         .cli-update-badge {
@@ -856,16 +840,6 @@
             font-size: 0.85rem;
         }
         .fb-search-match { background-color: rgba(99, 179, 237, 0.2); border-radius: 2px; }
-
-        /* =========================================
-           ピンモードボタン
-           ========================================= */
-        .btn-pin { background-color: #4a5568; transition: all 0.2s; }
-        .btn-pin.cli-pin-active {
-            background: linear-gradient(135deg, #d69e2e, #b7791f);
-            color: white; font-weight: bold;
-            box-shadow: 0 0 8px rgba(214, 158, 46, 0.5);
-        }
 
         /* =========================================
            下書きバナー
@@ -1101,7 +1075,7 @@
             #cli-viewer.pc-sidebar-hidden .cli-sidebar { transform: translateX(-100%); }
             #cli-viewer.pc-sidebar-hidden .cli-main { margin-left: 0; }
 
-            /* === CLI Viewer: メモ/指示パッドを右サイドパネル化 === */
+            /* === CLI Viewer: 指示パッド/提案を右サイドパネル化 === */
             .cli-main {
                 margin-left: 300px;
                 transition: margin-left 0.3s ease;
@@ -1135,7 +1109,6 @@
             .cli-tab-content.active { flex: 1; min-height: 0; }
 
             /* 入力欄はパネルの高さいっぱいまで使う */
-            #cli-memo-content { max-height: none; flex: 1; min-height: 120px; }
             #cli-instruction-content { max-height: none; flex: 1; min-height: 160px; }
             .cli-proposals-container { max-height: none; flex: 1; }
 

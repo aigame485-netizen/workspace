@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     
     <!-- ?v= はキャッシュバスター。JS/CSSを更新したらこの数字を上げること -->
-    <link rel="stylesheet" href="css/style.css?v=20260721">
+    <link rel="stylesheet" href="css/style.css?v=20260725">
 </head>
 <body>
 
@@ -104,7 +104,6 @@
                 <div style="text-align:center; color:#718096; padding:20px;">📡 CLIボタンで開始</div>
             </div>
             <div class="cli-sidebar-footer">
-                <button class="btn-tool" id="cli-pin-btn" onclick="cliPinFromSidebar()" style="width:100%; padding:8px; margin-bottom:8px;" title="ピンモード: タップで行をメモに転記">📌 ピンモード</button>
                 <button class="btn-control" onclick="toggleCliViewer()" style="width:100%; padding:8px; margin-bottom:8px;">🖼️ Canvasに戻る</button>
                 <button class="btn-control btn-danger" onclick="cliDeleteAllFiles()" style="width:100%; padding:8px;">🗑️ 全ファイル削除</button>
             </div>
@@ -131,23 +130,12 @@
             <div class="cli-memo-area" id="cli-memo-area">
                 <div class="cli-memo-header">
                     <div class="cli-memo-tabs">
-                        <button class="cli-memo-tab active" data-tab="memo" onclick="cliSwitchTab('memo')">📝 メモ</button>
-                        <button class="cli-memo-tab" data-tab="instruction" onclick="cliSwitchTab('instruction')">📋 指示パッド</button>
+                        <button class="cli-memo-tab active" data-tab="instruction" onclick="cliSwitchTab('instruction')">📋 指示パッド</button>
                         <button class="cli-memo-tab" data-tab="proposals" onclick="cliSwitchTab('proposals')">💡 提案<span id="cli-proposals-badge" class="cli-proposals-badge" style="display:none;"></span></button>
                     </div>
                     <button class="cli-memo-collapse-btn" id="cli-memo-toggle" onclick="toggleCliMemoExpand()">▲</button>
                 </div>
                 <div class="cli-memo-body" id="cli-memo-body">
-                    <!-- メモタブ -->
-                    <div class="cli-tab-content active" id="cli-tab-memo">
-                        <input type="text" class="input-text" id="cli-memo-section" autocomplete="off" placeholder="セクション名（任意）">
-                        <textarea id="cli-memo-content" class="input-text" rows="3" autocomplete="off" placeholder="修正指示やメモを入力..."></textarea>
-                        <div style="display:flex; gap:8px;">
-                            <button class="btn-control btn-cloud" onclick="cliSendMemo()" style="flex:1;">📤 メモを送信</button>
-                            <button class="btn-tool" onclick="cliShowMemoHistory()" title="送信済みメモ">📋</button>
-                            <button class="btn-tool btn-danger" onclick="cliDeleteAllMemos()" title="全メモ削除" style="padding:4px 8px;">🗑️</button>
-                        </div>
-                    </div>
                     <!-- 提案タブ -->
                     <div class="cli-tab-content" id="cli-tab-proposals">
                         <div class="cli-proposals-container" id="cli-proposals-container">
@@ -158,8 +146,8 @@
                             <button class="btn-control btn-danger" onclick="cliDeleteAllProposals()" style="padding:8px 12px;">🗑️ 全削除</button>
                         </div>
                     </div>
-                    <!-- 指示パッドタブ -->
-                    <div class="cli-tab-content" id="cli-tab-instruction">
+                    <!-- 指示パッドタブ（初期表示） -->
+                    <div class="cli-tab-content active" id="cli-tab-instruction">
                         <textarea id="cli-instruction-content" class="input-text" rows="4" autocomplete="off" placeholder="AIへの指示をここに書き溜める...&#10;長押しで行テキストを挿入できます"></textarea>
                         <div class="cli-instruction-actions">
                             <button class="btn-path-browse" onclick="cliOpenFolderBrowser()">📂 パス</button>
@@ -298,6 +286,6 @@
     <script src="js/serifu-check.js?v=20260710"></script>
 
     <!-- CLI Viewer -->
-    <script src="js/cli-viewer.js?v=20260710"></script>
+    <script src="js/cli-viewer.js?v=20260725"></script>
 </body>
 </html>
