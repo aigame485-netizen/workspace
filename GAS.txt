@@ -1,8 +1,29 @@
 // ★★★ SECRET_KEY はスクリプトプロパティから取得 ★★★
 // GASエディタ → プロジェクトの設定 → スクリプトプロパティ で SECRET_KEY を設定すること
+//
+// ============================================================
+//  v2 改修点（2026-08-21）
+//  1. CLIファイルを専用フォルダに集約し、fileIdをCacheServiceに保持
+//     → 毎回のDrive全体検索（getFilesByName）を廃止。読み書きが大幅に高速化
+//  2. setDescription() を廃止（path/updatedAtはファイル名とgetLastUpdatedで復元可能な冗長データだった）
+//  3. cli_upload_batch / cli_download_batch を新設
+//     → N個のファイルをHTTP 1往復で処理。WebApp起動の固定費を1回だけにする
+//  4. cli_capabilities を新設（クライアントがv2かどうか判定するためのプローブ）
+//  5. 未知の cli_* アクションはCanvas側へフォールスルーさせずエラーを返す（誤爆防止）
+// ============================================================
+
 const SECRET_KEY = PropertiesService.getScriptProperties().getProperty("SECRET_KEY");
 const FILE_PREFIX = "creative_board_";
 const CLI_FILE_PREFIX = "cli_file_";
+
+// CLIファイルを格納する専用フォルダ名。Driveのマイドライブ直下に自動生成される。
+const CLI_FOLDER_NAME = "cli_bridge_files";
+
+// CacheServiceのTTL（秒）。GASの上限は6時間。
+const CACHE_TTL = 21600;
+
+// バッチ処理の安全マージン。GASの実行上限6分に対し、これを超えたら打ち切って部分結果を返す。
+const BATCH_TIME_LIMIT_MS = 4 * 60 * 1000;
 
 // CLIファイル用ヘルパー: パス → Driveファイル名
 function pathToFileName(prefix, path) {
@@ -17,6 +38,106 @@ function fileNameToPath(prefix, fileName) {
   else stripped = stripped.replace(/\.json$/, "");
   return stripped.replace(/__/g, "/");
 }
+
+// ============================================================
+//  CLIファイル置き場（フォルダ＋fileIdキャッシュ）
+// ============================================================
+
+/**
+ * CLI専用フォルダを取得（無ければ作成）。フォルダIDはキャッシュする。
+ */
+function getCliFolder_() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get("cli_folder_id");
+  if (cached) {
+    try {
+      const folder = DriveApp.getFolderById(cached);
+      if (!folder.isTrashed()) return folder;
+    } catch (err) {
+      // IDが無効化されていた場合はキャッシュを捨てて作り直す
+    }
+    cache.remove("cli_folder_id");
+  }
+
+  const it = DriveApp.getFoldersByName(CLI_FOLDER_NAME);
+  let folder = null;
+  while (it.hasNext()) {
+    const f = it.next();
+    if (!f.isTrashed()) { folder = f; break; }
+  }
+  if (!folder) folder = DriveApp.createFolder(CLI_FOLDER_NAME);
+
+  cache.put("cli_folder_id", folder.getId(), CACHE_TTL);
+  return folder;
+}
+
+/**
+ * キャッシュキーを作る。日本語パスでも安全な短い固定長にするためMD5を噛ませる。
+ * （CacheServiceのキーは250文字制限があるため）
+ */
+function cacheKeyFor_(fileName) {
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, fileName, Utilities.Charset.UTF_8);
+  return "fid_" + Utilities.base64EncodeWebSafe(digest);
+}
+
+/**
+ * ファイル名からCLIファイルを取得。無ければ null。
+ * 探索順: キャッシュ(fileId) → 専用フォルダ内 → Drive全体（旧版からの移行用。見つけたらフォルダへ移す）
+ */
+function getCliFile_(folder, fileName) {
+  const cache = CacheService.getScriptCache();
+  const key = cacheKeyFor_(fileName);
+
+  const cachedId = cache.get(key);
+  if (cachedId) {
+    try {
+      const f = DriveApp.getFileById(cachedId);
+      if (!f.isTrashed()) return f;
+    } catch (err) {
+      // 削除済みなどでIDが引けない場合は下の探索へ落ちる
+    }
+    cache.remove(key);
+  }
+
+  const inFolder = folder.getFilesByName(fileName);
+  if (inFolder.hasNext()) {
+    const f = inFolder.next();
+    cache.put(key, f.getId(), CACHE_TTL);
+    return f;
+  }
+
+  // 旧版（Driveルート直下に作られていた頃）のファイルを拾って専用フォルダへ移行する
+  const global = DriveApp.getFilesByName(fileName);
+  while (global.hasNext()) {
+    const f = global.next();
+    if (f.isTrashed()) continue;
+    try { f.moveTo(folder); } catch (err) { /* 移動できなくても読み書きは可能なので続行 */ }
+    cache.put(key, f.getId(), CACHE_TTL);
+    return f;
+  }
+
+  return null;
+}
+
+/**
+ * CLIファイルを書き込む（無ければ作成）。戻り値は更新後のFile。
+ */
+function writeCliFile_(folder, path, content) {
+  const fileName = pathToFileName(CLI_FILE_PREFIX, path);
+  let file = getCliFile_(folder, fileName);
+
+  if (file) {
+    file.setContent(content);
+  } else {
+    file = folder.createFile(fileName, content);
+    CacheService.getScriptCache().put(cacheKeyFor_(fileName), file.getId(), CACHE_TTL);
+  }
+  return file;
+}
+
+// ============================================================
+//  エントリポイント
+// ============================================================
 
 function doGet(e) { return handleRequest(e); }
 function doPost(e) { return handleRequest(e); }
@@ -37,7 +158,7 @@ function handleRequest(e) {
     }
 
     const action = e.parameter.action;
-    
+
     // ------------------------------------------
     // アクション: 一覧取得 (list)
     // ------------------------------------------
@@ -56,15 +177,15 @@ function handleRequest(e) {
     }
 
     // ------------------------------------------
-    // アクション: 削除 (delete) ★新規追加
+    // アクション: 削除 (delete)
     // ------------------------------------------
     if (action === "delete") {
       const boardName = e.parameter.boardName;
       if (!boardName) return createJsonOutput({ status: "error", message: "名前がありません" });
-      
+
       const fileName = `${FILE_PREFIX}${boardName}.json`;
       const files = DriveApp.getFilesByName(fileName);
-      
+
       let count = 0;
       while (files.hasNext()) {
         const f = files.next();
@@ -79,45 +200,111 @@ function handleRequest(e) {
     // ==============================================
 
     // ------------------------------------------
+    // CLI: 機能プローブ (cli_capabilities)
+    // クライアントがバッチAPIを使ってよいか判定するために叩く。
+    // 旧版GASはこのアクションを知らず、bodyなしGETとして
+    // 「Canvasのdownload」に落ちるだけなので副作用は無い。
+    // ------------------------------------------
+    if (action === "cli_capabilities") {
+      return createJsonOutput({
+        status: "success",
+        version: 2,
+        features: ["upload_batch", "download_batch", "folder_store", "id_cache"]
+      });
+    }
+
+    // ------------------------------------------
     // CLI: ファイルアップロード (cli_upload)
     // ------------------------------------------
     if (action === "cli_upload") {
       const path = e.parameter.path;
       if (!path) return createJsonOutput({ status: "error", message: "pathが必要です" });
 
-      const fileName = pathToFileName(CLI_FILE_PREFIX, path);
-      const dataContent = e.postData ? e.postData.contents : "";
-      const meta = JSON.stringify({ path: path, updatedAt: new Date().toISOString() });
+      const folder = getCliFolder_();
+      const file = writeCliFile_(folder, path, e.postData ? e.postData.contents : "");
 
-      const files = DriveApp.getFilesByName(fileName);
-      if (files.hasNext()) {
-        const f = files.next();
-        f.setContent(dataContent);
-        f.setDescription(meta);
-      } else {
-        const f = DriveApp.createFile(fileName, dataContent);
-        f.setDescription(meta);
+      return createJsonOutput({
+        status: "success",
+        path: path,
+        updatedAt: file.getLastUpdated().toISOString()
+      });
+    }
+
+    // ------------------------------------------
+    // CLI: 一括アップロード (cli_upload_batch)
+    // POST body: {"files":[{"path":"...","content":"..."}, ...]}
+    // N個のファイルをGASの1実行内でまとめて書き込む。
+    // WebApp起動の固定費を1回で済ませるのが狙い。
+    // ------------------------------------------
+    if (action === "cli_upload_batch") {
+      const startedAt = Date.now();
+      let payload;
+      try {
+        payload = JSON.parse(e.postData ? e.postData.contents : "{}");
+      } catch (err) {
+        return createJsonOutput({ status: "error", message: "POST bodyがJSONとして不正です" });
       }
-      return createJsonOutput({ status: "success", path: path });
+
+      const items = payload.files;
+      if (!Array.isArray(items)) {
+        return createJsonOutput({ status: "error", message: "files配列が必要です" });
+      }
+
+      const folder = getCliFolder_();
+      const results = [];
+      const remaining = [];
+
+      for (let i = 0; i < items.length; i++) {
+        // 実行時間の上限に近づいたら、残りを呼び出し側へ差し戻す
+        if (Date.now() - startedAt > BATCH_TIME_LIMIT_MS) {
+          for (let j = i; j < items.length; j++) remaining.push(items[j].path);
+          break;
+        }
+
+        const item = items[i];
+        try {
+          if (!item || !item.path) {
+            results.push({ path: (item && item.path) || "", ok: false, message: "pathが必要です" });
+            continue;
+          }
+          const file = writeCliFile_(folder, item.path, item.content == null ? "" : item.content);
+          results.push({ path: item.path, ok: true, updatedAt: file.getLastUpdated().toISOString() });
+        } catch (err) {
+          results.push({ path: item.path, ok: false, message: err.toString() });
+        }
+      }
+
+      return createJsonOutput({ status: "success", results: results, remaining: remaining });
     }
 
     // ------------------------------------------
     // CLI: ファイル一覧取得 (cli_list)
+    // 差分同期の司令塔。全ファイルのupdatedAtが1リクエストで取れる。
     // ------------------------------------------
     if (action === "cli_list") {
-      const files = DriveApp.searchFiles("title contains '" + CLI_FILE_PREFIX + "' and trashed = false");
+      const folder = getCliFolder_();
       const fileList = [];
-      while (files.hasNext()) {
-        const f = files.next();
-        const name = f.getName();
-        if (!name.startsWith(CLI_FILE_PREFIX)) continue;
-        const path = fileNameToPath(CLI_FILE_PREFIX, name);
-        fileList.push({
-          path: path,
-          updatedAt: f.getLastUpdated().toISOString(),
-          size: f.getSize()
-        });
+
+      const collect = (iter) => {
+        while (iter.hasNext()) {
+          const f = iter.next();
+          const name = f.getName();
+          if (!name.startsWith(CLI_FILE_PREFIX)) continue;
+          fileList.push({
+            path: fileNameToPath(CLI_FILE_PREFIX, name),
+            updatedAt: f.getLastUpdated().toISOString(),
+            size: f.getSize()
+          });
+        }
+      };
+
+      collect(folder.getFiles());
+
+      // 専用フォルダが空の場合のみ、旧版がルートに残したファイルも拾う（移行期の保険）
+      if (fileList.length === 0) {
+        collect(DriveApp.searchFiles("title contains '" + CLI_FILE_PREFIX + "' and trashed = false"));
       }
+
       fileList.sort((a, b) => a.path.localeCompare(b.path));
       return createJsonOutput({ status: "success", files: fileList });
     }
@@ -129,20 +316,63 @@ function handleRequest(e) {
       const path = e.parameter.path;
       if (!path) return createJsonOutput({ status: "error", message: "pathが必要です" });
 
-      const fileName = pathToFileName(CLI_FILE_PREFIX, path);
-      const files = DriveApp.getFilesByName(fileName);
-      if (files.hasNext()) {
-        const f = files.next();
-        const content = f.getBlob().getDataAsString();
-        return createJsonOutput({
-          status: "success",
-          path: path,
-          content: content,
-          updatedAt: f.getLastUpdated().toISOString()
-        });
-      } else {
-        return createJsonOutput({ status: "error", message: "File not found: " + path });
+      const folder = getCliFolder_();
+      const file = getCliFile_(folder, pathToFileName(CLI_FILE_PREFIX, path));
+      if (!file) return createJsonOutput({ status: "error", message: "File not found: " + path });
+
+      return createJsonOutput({
+        status: "success",
+        path: path,
+        content: file.getBlob().getDataAsString(),
+        updatedAt: file.getLastUpdated().toISOString()
+      });
+    }
+
+    // ------------------------------------------
+    // CLI: 一括ダウンロード (cli_download_batch)
+    // POST body: {"paths":["...", ...]}
+    // スマホ側のフォルダ先読み用。ファイル切替のたびの往復を無くす。
+    // ------------------------------------------
+    if (action === "cli_download_batch") {
+      const startedAt = Date.now();
+      let payload;
+      try {
+        payload = JSON.parse(e.postData ? e.postData.contents : "{}");
+      } catch (err) {
+        return createJsonOutput({ status: "error", message: "POST bodyがJSONとして不正です" });
       }
+
+      const paths = payload.paths;
+      if (!Array.isArray(paths)) {
+        return createJsonOutput({ status: "error", message: "paths配列が必要です" });
+      }
+
+      const folder = getCliFolder_();
+      const files = [];
+      const missing = [];
+      const remaining = [];
+
+      for (let i = 0; i < paths.length; i++) {
+        if (Date.now() - startedAt > BATCH_TIME_LIMIT_MS) {
+          for (let j = i; j < paths.length; j++) remaining.push(paths[j]);
+          break;
+        }
+
+        const path = paths[i];
+        try {
+          const file = getCliFile_(folder, pathToFileName(CLI_FILE_PREFIX, path));
+          if (!file) { missing.push(path); continue; }
+          files.push({
+            path: path,
+            content: file.getBlob().getDataAsString(),
+            updatedAt: file.getLastUpdated().toISOString()
+          });
+        } catch (err) {
+          missing.push(path);
+        }
+      }
+
+      return createJsonOutput({ status: "success", files: files, missing: missing, remaining: remaining });
     }
 
     // ------------------------------------------
@@ -152,22 +382,42 @@ function handleRequest(e) {
       const path = e.parameter.path;
       if (!path) return createJsonOutput({ status: "error", message: "pathが必要です" });
 
+      const cache = CacheService.getScriptCache();
+      const folder = getCliFolder_();
       let count = 0;
+
       if (path === "*") {
-        const files = DriveApp.searchFiles("title contains '" + CLI_FILE_PREFIX + "' and trashed = false");
-        while (files.hasNext()) {
-          files.next().setTrashed(true);
+        // 専用フォルダ内と、旧版がルートに残したものの両方を消す
+        const inFolder = folder.getFiles();
+        while (inFolder.hasNext()) {
+          const f = inFolder.next();
+          cache.remove(cacheKeyFor_(f.getName()));
+          f.setTrashed(true);
+          count++;
+        }
+        const global = DriveApp.searchFiles("title contains '" + CLI_FILE_PREFIX + "' and trashed = false");
+        while (global.hasNext()) {
+          const f = global.next();
+          cache.remove(cacheKeyFor_(f.getName()));
+          f.setTrashed(true);
           count++;
         }
       } else {
         const fileName = pathToFileName(CLI_FILE_PREFIX, path);
-        const files = DriveApp.getFilesByName(fileName);
-        while (files.hasNext()) {
-          files.next().setTrashed(true);
+        const file = getCliFile_(folder, fileName);
+        if (file) {
+          cache.remove(cacheKeyFor_(fileName));
+          file.setTrashed(true);
           count++;
         }
       }
       return createJsonOutput({ status: "success", deletedCount: count });
+    }
+
+    // 未知の cli_* アクションはCanvas側の処理へ落とさずエラーにする。
+    // （旧版では action=cli_なんとか が「Canvasボードの保存」に化ける危険があった）
+    if (action && action.indexOf("cli_") === 0) {
+      return createJsonOutput({ status: "error", message: "未知のCLIアクション: " + action });
     }
 
     // ==============================================
@@ -187,7 +437,7 @@ function handleRequest(e) {
       }
     } else {
       // アップロード
-      const dataContent = e.postData.contents; 
+      const dataContent = e.postData.contents;
       const files = DriveApp.getFilesByName(fileName);
       if (files.hasNext()) {
         files.next().setContent(dataContent); // 上書き

@@ -18,6 +18,14 @@ let cliActiveTab = 'instruction';  // 'instruction' | 'proposals'
 let cliDraftSaveTimer = null;      // 下書き自動保存タイマー
 let cliInstructionSaveTimer = null; // 指示パッドの自動保存タイマー
 let cliPendingServerContent = null; // サーバー側の新しい内容（更新バナー表示中）
+
+// このセッションで cli_list を取り直したか。
+// 起動直後はキャッシュ由来の古い一覧が入っているため、それを根拠に
+// 「キャッシュは最新」と判断してしまうと更新を取りこぼす。取得済みの時だけ信用する。
+let cliFileListFresh = false;
+
+// 1回の先読みでまとめて取得する最大ファイル数（GASの実行時間に配慮した上限）
+const CLI_PREFETCH_LIMIT = 15;
 let cliImageMode = false;           // 現在開いているファイルが画像かどうか
 const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
 
@@ -223,6 +231,7 @@ async function cliRefreshFiles() {
 
         if (json.status === 'success') {
             cliFileList = json.files;
+            cliFileListFresh = true;
             await cliSaveFileListToCache(cliFileList);
             cliRenderFileTree(cliFileList);
             updateStatus('CLI一覧取得完了', true);
@@ -420,6 +429,18 @@ async function cliOpenFile(path) {
         cliEditorInstance.setValue('🖼️ 画像を読み込み中...');
         closeCliSidebar();
 
+        // 【高速化】キャッシュが最新世代なら通信せずに表示する（画像は特に効果が大きい）
+        const cachedImage = await cliGetCachedFile(path);
+        if (cliIsCacheFresh(path, cachedImage)) {
+            const cachedObj = cliTryParseImageContent(cachedImage.content);
+            if (cachedObj) {
+                cliShowImage(cachedObj);
+                cliRenderFileTree(cliFileList);
+                updateStatus('🖼️ 表示完了（キャッシュ最新）', true);
+                return;
+            }
+        }
+
         const pass = await getAuthPassword();
         if (!pass) return;
 
@@ -504,6 +525,19 @@ async function cliOpenFile(path) {
     closeCliSidebar();
     setTimeout(() => cliEditorInstance.refresh(), 50);
     cliUpdateCharCount();
+
+    // 【高速化】キャッシュがサーバーと同一世代なら、取りに行かずここで確定させる。
+    // 複数ファイルを行き来する時の待ち時間がゼロになる。
+    if (cliIsCacheFresh(path, cached)) {
+        cliOriginalContent = cached.content;
+        cliHasUnsavedChanges = false;
+        cliPendingServerContent = null;
+        cliUpdateEditButtons();
+        cliRenderFileTree(cliFileList);
+        updateStatus('表示完了（キャッシュ最新）', true);
+        cliPrefetchSiblings(path);   // 待たずに裏で同フォルダを先読み
+        return;
+    }
 
     // サーバーから最新を取得
     const pass = await getAuthPassword();
@@ -785,6 +819,102 @@ async function cliSaveFileListToCache(files) {
     try {
         await setSetting('cli_file_list_cache', JSON.stringify(files));
     } catch (e) { /* 無視 */ }
+}
+
+// =========================================
+// 通信の省略と先読み（読み込み高速化）
+// =========================================
+//
+// これまではファイルを開くたびに必ず cli_download を1往復していたため、
+// 中身が変わっていなくてもGAS起動の固定費（1.5〜3秒）を毎回払っていた。
+// cli_list が全ファイルの updatedAt を返してくれるので、
+// それとキャッシュの serverModified を突き合わせれば「取りに行く必要があるか」が判定できる。
+
+/** cli_listの結果から、そのパスのサーバー側更新時刻を引く */
+function cliRemoteUpdatedAt(path) {
+    if (!Array.isArray(cliFileList)) return null;
+    const hit = cliFileList.find(f => f.path === path);
+    return hit ? (hit.updatedAt || null) : null;
+}
+
+/** キャッシュがサーバーと同一世代か（＝ダウンロード不要か） */
+function cliIsCacheFresh(path, cached) {
+    if (!cached || !cached.serverModified) return false;
+    if (!cliFileListFresh) return false;   // 一覧がこのセッションで未取得なら信用しない
+    const remote = cliRemoteUpdatedAt(path);
+    if (!remote) return false;           // 一覧が未取得なら安全側に倒して取りに行く
+    return cached.serverModified === remote;
+}
+
+// --- GASの世代判定（バッチAPIが使えるか） ---
+// 重要: 旧版GASに対して body付きで未知のactionを投げると、
+// Canvasボードの保存処理に落ちて creative_board_default.json を壊す危険がある。
+// cli_capabilities は body無しで投げるため旧版でも副作用が無く、プローブとして安全。
+let cliGasVersion = null;
+
+async function cliEnsureGasVersion() {
+    if (cliGasVersion !== null) return cliGasVersion;
+    const pass = await getAuthPassword();
+    if (!pass) return 1;
+    try {
+        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_capabilities`;
+        const res = await fetch(url, { method: 'POST' });
+        const json = await res.json();
+        cliGasVersion = (json && json.version) ? json.version : 1;
+    } catch (e) {
+        cliGasVersion = 1;
+    }
+    return cliGasVersion;
+}
+
+/**
+ * 同じフォルダの兄弟ファイルを1リクエストでまとめて先読みしてキャッシュに入れる。
+ * 失敗しても表示には影響しないので、エラーは握りつぶしてよい（あくまで先読み）。
+ */
+async function cliPrefetchSiblings(path) {
+    try {
+        if (await cliEnsureGasVersion() < 2) return;
+        if (!Array.isArray(cliFileList)) return;
+
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
+        const siblings = cliFileList
+            .filter(f => f.path !== path)
+            .filter(f => (f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/') + 1) : '') === dir)
+            .filter(f => !cliIsImagePath(f.path));   // 画像は重いので先読みしない
+
+        const stale = [];
+        for (const f of siblings) {
+            const cached = await cliGetCachedFile(f.path);
+            if (!cliIsCacheFresh(f.path, cached)) stale.push(f.path);
+            if (stale.length >= CLI_PREFETCH_LIMIT) break;
+        }
+        if (stale.length === 0) return;
+
+        const pass = await getAuthPassword();
+        if (!pass) return;
+
+        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download_batch`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ paths: stale })
+        });
+        const json = await res.json();
+        if (!json || json.status !== 'success') return;
+
+        const encKey = await getEncryptionKey();
+        for (const f of (json.files || [])) {
+            let content = f.content;
+            try {
+                const parsed = JSON.parse(content);
+                if (parsed && parsed.encrypted) {
+                    if (!encKey) continue;
+                    content = await decryptData(parsed, encKey);
+                }
+            } catch (_) { /* 平文ならそのまま */ }
+            await cliSaveFileToCache(f.path, content, f.updatedAt);
+        }
+    } catch (e) { /* 先読みの失敗は無視 */ }
 }
 
 // =========================================
