@@ -626,23 +626,13 @@
             font-family: var(--editor-font);
             line-height: 1.85;
             word-wrap: break-word;
+            /* 閲覧専用だが、選択してコピーはできるようにする */
+            user-select: text; -webkit-user-select: text;
+            -webkit-touch-callout: default;
         }
         #cli-viewer.cli-preview-on .cli-preview { display: block; }
-        /* 閲覧中（編集していない時）は原文エディタを隠す */
-        #cli-viewer.cli-preview-on:not(.cli-edit-mode) .cli-viewer-area .CodeMirror { display: none; }
-
-        /* 編集中は上下に分割（スマホ）。エディタが上、整形表示が下 */
-        #cli-viewer.cli-preview-on.cli-edit-mode .cli-viewer-area {
-            display: flex; flex-direction: column;
-        }
-        #cli-viewer.cli-preview-on.cli-edit-mode .cli-viewer-area .CodeMirror {
-            flex: 1 1 50%; height: auto !important; min-height: 0;
-        }
-        #cli-viewer.cli-preview-on.cli-edit-mode .cli-preview {
-            position: static; flex: 1 1 50%; min-height: 0;
-            border-top: 2px solid #4a5568;
-            padding-bottom: 16px;
-        }
+        /* 整形表示中は原文エディタを隠す（整形＝閲覧専用。編集は原文でおこなう） */
+        #cli-viewer.cli-preview-on .cli-viewer-area .CodeMirror { display: none; }
 
         /* 整形表示の中身 */
         .cli-preview > *:first-child { margin-top: 0; }
@@ -1295,12 +1285,6 @@
             }
             .cli-sidebar.open { transform: none; }
             .cli-sidebar-overlay { display: none !important; }
-
-            /* 編集中の整形表示は、横幅に余裕があるので左右に分割する */
-            #cli-viewer.cli-preview-on.cli-edit-mode .cli-viewer-area { flex-direction: row; }
-            #cli-viewer.cli-preview-on.cli-edit-mode .cli-preview {
-                border-top: none; border-left: 2px solid #4a5568;
-            }
 
             /* ☰ボタンでサイドバーを畳んだ状態（JSが pc-sidebar-hidden を付与） */
             #cli-viewer.pc-sidebar-hidden .cli-sidebar { transform: translateX(-100%); }

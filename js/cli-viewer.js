@@ -209,6 +209,13 @@ window.cliOnStatus = cliOnStatus;
 
 function toggleCliPreview() {
     if (cliImageMode) { alert('画像ファイルは整形表示できません'); return; }
+
+    // 整形表示は閲覧専用。編集中に押されたら、編集モードを抜けてから切り替える
+    if (!cliPreviewMode && cliEditMode) {
+        if (cliHasUnsavedChanges && !confirm('未保存の変更があります。破棄して整形表示にしますか？')) return;
+        cliExitEditMode(true);
+    }
+
     cliPreviewMode = !cliPreviewMode;
     try { localStorage.setItem('cli_preview_mode', cliPreviewMode ? '1' : '0'); } catch (_) {}
     cliApplyPreviewMode();
@@ -1008,6 +1015,12 @@ function toggleCliEditMode() {
         }
         cliExitEditMode(true);
     } else {
+        // 整形表示中なら原文に戻してから編集を始める（整形表示は閲覧専用のため）
+        if (cliPreviewMode) {
+            cliPreviewMode = false;
+            try { localStorage.setItem('cli_preview_mode', '0'); } catch (_) {}
+            cliApplyPreviewMode();
+        }
         // 編集モード開始
         cliEnterEditMode();
     }
@@ -1027,11 +1040,6 @@ function cliEnterEditMode(overrideOriginal = null) {
     // ビジュアルフィードバック
     document.getElementById('cli-viewer').classList.add('cli-edit-mode');
     cliUpdateEditButtons();
-    // 整形表示中は分割レイアウトへ切り替わるため、座標計算をやり直す
-    if (cliPreviewMode) {
-        cliRenderPreview();
-        setTimeout(() => cliEditorInstance.refresh(), 50);
-    }
     updateStatus('✏️ 編集モード', true);
 
     // カーソルをエディタに合わせる
@@ -1056,7 +1064,6 @@ function cliExitEditMode(clearDraft = false) {
     // ビジュアルフィードバック
     document.getElementById('cli-viewer').classList.remove('cli-edit-mode');
     cliUpdateEditButtons();
-    if (cliPreviewMode) setTimeout(() => cliEditorInstance.refresh(), 50);
     updateStatus('Ready', true);
 }
 
