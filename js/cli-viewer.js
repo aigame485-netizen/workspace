@@ -29,6 +29,7 @@ const CLI_PREFETCH_LIMIT = 15;
 let cliImageMode = false;           // 現在開いているファイルが画像かどうか
 let cliPreviewMode = false;         // マークダウンを整形表示しているか
 let cliPreviewTimer = null;         // 整形表示の再描画を間引くためのタイマー
+let cliPreviewLastFile = null;      // 整形表示が最後に描画したファイル（別ファイルなら先頭へ戻す）
 let cliStatusTimer = null;          // 進捗トーストを自動で引っ込めるタイマー
 const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
 
@@ -215,21 +216,82 @@ function toggleCliPreview() {
         if (cliHasUnsavedChanges && !confirm('未保存の変更があります。破棄して整形表示にしますか？')) return;
         cliExitEditMode(true);
     }
-
-    cliPreviewMode = !cliPreviewMode;
-    try { localStorage.setItem('cli_preview_mode', cliPreviewMode ? '1' : '0'); } catch (_) {}
-    cliApplyPreviewMode();
+    cliSetPreviewMode(!cliPreviewMode);
 }
 
-function cliApplyPreviewMode() {
+// 整形⇔原文の切替。切替前に見ていた行を覚えておき、切替後に同じ場所へ合わせる
+function cliSetPreviewMode(on) {
+    if (cliPreviewMode === on) return;
+    const anchorLine = cliPreviewMode ? cliPreviewTopLine() : cliEditorTopLine();
+    cliPreviewMode = on;
+    try { localStorage.setItem('cli_preview_mode', on ? '1' : '0'); } catch (_) {}
+    cliApplyPreviewMode(anchorLine);
+}
+
+function cliApplyPreviewMode(anchorLine = null) {
     const viewer = document.getElementById('cli-viewer');
     if (viewer) viewer.classList.toggle('cli-preview-on', cliPreviewMode);
     cliUpdatePreviewButton();
 
-    if (cliPreviewMode) cliRenderPreview();
+    if (cliPreviewMode) {
+        cliRenderPreview();
+        if (anchorLine !== null) cliScrollPreviewToLine(anchorLine);
+    }
 
-    // レイアウトが変わるのでCodeMirrorの座標計算をやり直す
-    if (cliEditorInstance) setTimeout(() => cliEditorInstance.refresh(), 50);
+    // 表示が切り替わった直後は座標がずれているので、計算し直してから位置を合わせる
+    if (cliEditorInstance) {
+        setTimeout(() => {
+            cliEditorInstance.refresh();
+            if (!cliPreviewMode && anchorLine !== null) cliScrollEditorToLine(anchorLine);
+        }, 50);
+    }
+}
+
+// =========================================
+// 整形表示と原文のスクロール位置あわせ
+// 整形表示の各ブロックに元の行番号(data-line)を振っておき、それを手がかりにする
+// =========================================
+
+// エディタの一番上に見えている行
+function cliEditorTopLine() {
+    if (!cliEditorInstance) return 0;
+    try {
+        return cliEditorInstance.lineAtHeight(cliEditorInstance.getScrollInfo().top, 'local');
+    } catch (_) { return 0; }
+}
+
+// エディタを指定行が先頭に来るようスクロール
+function cliScrollEditorToLine(line) {
+    if (!cliEditorInstance) return;
+    const max = Math.max(0, cliEditorInstance.lineCount() - 1);
+    const n = Math.max(0, Math.min(line, max));
+    const coords = cliEditorInstance.charCoords({ line: n, ch: 0 }, 'local');
+    cliEditorInstance.scrollTo(null, coords.top);
+}
+
+// 整形表示の一番上に見えているブロックの、元の行番号
+function cliPreviewTopLine() {
+    const el = document.getElementById('cli-preview');
+    if (!el) return 0;
+    const top = el.scrollTop + 4;
+    let line = 0;
+    for (const node of el.querySelectorAll('[data-line]')) {
+        if (node.offsetTop <= top) line = parseInt(node.dataset.line, 10) || 0;
+        else break;
+    }
+    return line;
+}
+
+// 整形表示を、指定行を含むブロックが先頭に来るようスクロール
+function cliScrollPreviewToLine(line) {
+    const el = document.getElementById('cli-preview');
+    if (!el) return;
+    let target = null;
+    for (const node of el.querySelectorAll('[data-line]')) {
+        if ((parseInt(node.dataset.line, 10) || 0) <= line) target = node;
+        else break;
+    }
+    el.scrollTop = target ? target.offsetTop : 0;
 }
 
 function cliUpdatePreviewButton() {
@@ -252,7 +314,10 @@ function cliRenderPreview() {
     if (!el || !cliEditorInstance) return;
 
     const md = cliEditorInstance.getValue();
-    const prevScroll = el.scrollTop;
+    // 別のファイルを開いた時は、前のファイルのスクロール位置を引き継がない
+    const sameFile = (cliPreviewLastFile === cliCurrentFile);
+    cliPreviewLastFile = cliCurrentFile;
+    const prevScroll = sameFile ? el.scrollTop : 0;
 
     if (typeof marked === 'undefined') {
         // CDNが読めなかった場合は原文をそのまま出す（表示が空になるのを防ぐ）
@@ -261,10 +326,11 @@ function cliRenderPreview() {
         return;
     }
 
-    // gfm: 表やチェックリストを有効化 / breaks: 改行をそのまま改行として扱う
-    el.innerHTML = marked.parse(md, { gfm: true, breaks: true });
+    const opts = { gfm: true, breaks: true };
+    el.innerHTML = marked.parse(md, opts);
 
     // 幅の広い表は、本文ごと横に伸びないよう個別にスクロールさせる
+    // （data-lineを振る前に囲む。囲んだdivの方が最上位の要素になるため）
     el.querySelectorAll('table').forEach(table => {
         if (table.parentElement && table.parentElement.classList.contains('md-table-wrap')) return;
         const wrap = document.createElement('div');
@@ -272,6 +338,21 @@ function cliRenderPreview() {
         table.parentNode.insertBefore(wrap, table);
         wrap.appendChild(table);
     });
+
+    // 原文の何行目から作られたブロックかを記録する（スクロール位置あわせ用）
+    // marked のトークンは元テキスト(raw)を持っているので、改行数を積み上げれば行番号が出る
+    try {
+        const lines = [];
+        let line = 0;
+        marked.lexer(md, opts).forEach(token => {
+            if (token.type !== 'space') lines.push(line);
+            line += (token.raw.match(/\n/g) || []).length;
+        });
+        const blocks = el.children;
+        for (let i = 0; i < blocks.length && i < lines.length; i++) {
+            blocks[i].dataset.line = lines[i];
+        }
+    } catch (_) { /* 対応づけに失敗しても表示自体には影響させない */ }
 
     // 本文と同じ文字サイズに揃える
     el.style.fontSize = cliFontSize + 'px';
@@ -1017,9 +1098,12 @@ function toggleCliEditMode() {
     } else {
         // 整形表示中なら原文に戻してから編集を始める（整形表示は閲覧専用のため）
         if (cliPreviewMode) {
-            cliPreviewMode = false;
-            try { localStorage.setItem('cli_preview_mode', '0'); } catch (_) {}
-            cliApplyPreviewMode();
+            const anchorLine = cliPreviewTopLine();
+            cliSetPreviewMode(false);
+            // 見ていた場所にカーソルを置く。
+            // これをやらないと cliEnterEditMode() の focus() で先頭へ飛んでしまう
+            const max = Math.max(0, cliEditorInstance.lineCount() - 1);
+            cliEditorInstance.setCursor({ line: Math.max(0, Math.min(anchorLine, max)), ch: 0 });
         }
         // 編集モード開始
         cliEnterEditMode();
