@@ -76,7 +76,7 @@
             flex-shrink: 0;
         }
         .tab {
-            padding: 4px 12px;
+            padding: 3px 10px;
             font-size: 0.85rem;
             color: #a0aec0;
             cursor: pointer;
@@ -94,8 +94,40 @@
             color: white;
             font-weight: bold;
         }
-        .tab-name { color: #90cdf4; font-weight: bold; }
-        .tab.active .tab-name { color: white; }
+        .tab-icon { font-size: 0.8rem; line-height: 1; flex-shrink: 0; }
+        /* 上段=タブ名 / 下段=クラウド同期先 の2段組み */
+        .tab-body {
+            display: flex; flex-direction: column; align-items: flex-start;
+            line-height: 1.2; min-width: 0;
+        }
+        .tab-name {
+            color: #90cdf4; font-weight: bold; font-size: 0.85rem;
+            max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        /* アクティブタブは名前欄をinputに差し替えて、その場でリネームできるようにする */
+        .tab.active .tab-name { display: none; }
+        .tab-name-input { display: none; }
+        .tab.active .tab-name-input {
+            display: block; width: 120px;
+            background: transparent; border: 1px solid transparent;
+            border-bottom: 1px dotted rgba(255,255,255,0.5);
+            color: #fff; font-weight: bold; font-size: 0.85rem;
+            font-family: inherit; padding: 0 3px; border-radius: 3px;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .tab.active .tab-name-input:hover { border-color: #90cdf4; background-color: rgba(0,0,0,0.25); }
+        .tab.active .tab-name-input:focus {
+            border-color: #63b3ed; background-color: #1a202c; outline: none;
+            border-bottom-style: solid;
+        }
+        /* クラウド同期先の表示（未リンクはグレー） */
+        .tab-cloud {
+            font-size: 0.6rem; color: #68d391;
+            max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .tab-cloud.unlinked { color: #718096; }
+        .tab.active .tab-cloud { color: #c6f6d5; }
+        .tab.active .tab-cloud.unlinked { color: #bee3f8; opacity: 0.75; }
 
         /* --- ボタン類 --- */
         .control-group {
@@ -384,7 +416,37 @@
             font-weight: bold; color: #e2e8f0; flex-grow: 1; padding-right: 10px; 
             cursor: pointer; display: flex; align-items: center; gap: 5px;
         }
-        .file-actions { display: flex; gap: 8px; }
+        .file-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+        /* --- クラウド同期先ブロック --- */
+        .cloud-sync-box {
+            background: #1a202c; border: 1px solid #4a5568; border-radius: 4px;
+            padding: 10px; display: flex; flex-direction: column; gap: 8px;
+        }
+        .cloud-sync-row {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px; flex-wrap: wrap;
+        }
+        .cloud-sync-tab { font-size: 0.95rem; color: #e2e8f0; }
+        .cloud-sync-tab strong { color: #63b3ed; font-size: 1.05rem; }
+        .cloud-sync-link { font-size: 0.8rem; color: #68d391; }
+        .cloud-sync-link.unlinked { color: #a0aec0; }
+        .cloud-hint { margin: 0; font-size: 0.7rem; color: #a0aec0; line-height: 1.5; }
+
+        /* --- 一覧の各行 --- */
+        .file-main { flex-grow: 1; min-width: 0; padding-right: 8px; }
+        .file-main .file-name { cursor: default; flex-wrap: wrap; }
+        .file-meta { font-size: 0.68rem; color: #a0aec0; margin-top: 2px; }
+        .file-row-current { border-left: 3px solid #48bb78; }
+        .tab-chip {
+            font-size: 0.65rem; background: #2b6cb0; color: #fff;
+            border-radius: 8px; padding: 1px 6px; margin-left: 4px;
+            white-space: nowrap; font-weight: normal;
+        }
+        .tab-chip.me { background: #38a169; }
+        .btn-link { background-color: #4a5568; }
+        .btn-link:hover:not(:disabled) { background-color: #63b3ed; }
+        .btn-mini:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-mini {
             padding: 4px 10px; font-size: 0.75rem; border-radius: 3px; border: none; cursor: pointer; color: white;
         }
@@ -406,6 +468,14 @@
             h1 { display: none; }
             header { gap: 8px; padding: 0 8px; }
             .btn-control { padding: 6px 8px; font-size: 0.75rem; }
+            /* タブは横幅を詰める（ヘッダーは横スクロールするので潰さない） */
+            .tab { padding: 3px 8px; gap: 4px; }
+            .tab-icon { font-size: 0.72rem; }
+            .tab-name, .tab.active .tab-name-input { max-width: 88px; width: 88px; font-size: 0.8rem; }
+            .tab-cloud { max-width: 88px; font-size: 0.58rem; }
+            /* モーダル内の一覧は行が詰まりやすいのでボタンを小さく */
+            .file-actions .btn-mini { padding: 4px 7px; }
+            .file-row { padding: 8px; }
             /* ドッキングしていないウィンドウは通常配置 */
             #canvas { padding: 10px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px; overflow-y: auto; }
 

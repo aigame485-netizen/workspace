@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     
     <!-- ?v= はキャッシュバスター。JS/CSSを更新したらこの数字を上げること -->
-    <link rel="stylesheet" href="css/style.css?v=20260725">
+    <link rel="stylesheet" href="css/style.css?v=20260827">
 </head>
 <body>
 
@@ -33,16 +33,43 @@
             <input type="number" id="serifuThresholdInput" min="60" max="100" step="5" value="90" onchange="changeSerifuThreshold(this.value)">
         </div>
 
-        <!-- タブ表示 -->
+        <!-- タブ表示（上段=タブ名／下段=クラウド同期先。名前欄はアクティブタブでそのまま編集できる） -->
         <div class="tabs-container">
             <div class="tab active" id="tab-btn-1" onclick="switchTab(1)">
-                📁 <span id="tab-name-1" class="tab-name">default</span>
+                <span class="tab-icon">📁</span>
+                <span class="tab-body">
+                    <span class="tab-name" id="tab-name-1">タブ1</span>
+                    <input type="text" class="tab-name-input" id="tab-name-input-1" value="タブ1"
+                           maxlength="20" autocomplete="off" title="クリックでタブ名を変更できます"
+                           onclick="event.stopPropagation()"
+                           onkeydown="onTabNameKeydown(event, 1)"
+                           onblur="commitTabName(1, this.value)">
+                    <span class="tab-cloud" id="tab-cloud-1">☁ 未リンク</span>
+                </span>
             </div>
             <div class="tab" id="tab-btn-2" onclick="switchTab(2)">
-                📁 <span id="tab-name-2" class="tab-name">tab2</span>
+                <span class="tab-icon">📁</span>
+                <span class="tab-body">
+                    <span class="tab-name" id="tab-name-2">タブ2</span>
+                    <input type="text" class="tab-name-input" id="tab-name-input-2" value="タブ2"
+                           maxlength="20" autocomplete="off" title="クリックでタブ名を変更できます"
+                           onclick="event.stopPropagation()"
+                           onkeydown="onTabNameKeydown(event, 2)"
+                           onblur="commitTabName(2, this.value)">
+                    <span class="tab-cloud" id="tab-cloud-2">☁ 未リンク</span>
+                </span>
             </div>
             <div class="tab" id="tab-btn-3" onclick="switchTab(3)">
-                📁 <span id="tab-name-3" class="tab-name">tab3</span>
+                <span class="tab-icon">📁</span>
+                <span class="tab-body">
+                    <span class="tab-name" id="tab-name-3">タブ3</span>
+                    <input type="text" class="tab-name-input" id="tab-name-input-3" value="タブ3"
+                           maxlength="20" autocomplete="off" title="クリックでタブ名を変更できます"
+                           onclick="event.stopPropagation()"
+                           onkeydown="onTabNameKeydown(event, 3)"
+                           onblur="commitTabName(3, this.value)">
+                    <span class="tab-cloud" id="tab-cloud-3">☁ 未リンク</span>
+                </span>
             </div>
         </div>
 
@@ -194,21 +221,23 @@
                         <button class="btn-control btn-danger" onclick="removeEncKey()" style="padding:6px 10px;">解除</button>
                     </div>
                 </div>
-                <div style="background:#2d3748; padding-bottom:15px; border-bottom:2px dashed #4a5568; margin-bottom:10px;">
-                    <p style="margin:0 0 10px 0; font-size:0.9rem; color:#cbd5e0;">
-                        現在のボード: <strong id="cloud-current-name" style="color:#63b3ed; font-size:1.1rem;">default</strong>
-                    </p>
-                    <button class="btn-control btn-cloud" style="width:100%; padding:10px; margin-bottom:10px; font-size:1rem;" onclick="processUploadCurrent()">
-                        ⬆️ この名前で上書き保存
+                <div class="cloud-sync-box">
+                    <div class="cloud-sync-row">
+                        <span class="cloud-sync-tab">📁 <strong id="cloud-current-name">タブ1</strong></span>
+                        <span class="cloud-sync-link" id="cloud-current-link">☁ 未リンク</span>
+                    </div>
+                    <button class="btn-control btn-cloud" id="btn-upload-linked" style="width:100%; padding:10px; font-size:1rem;" onclick="processUploadLinked()">
+                        ⬆️ 同期先に上書き保存
                     </button>
                     <div class="input-group">
-                        <input type="text" id="newBoardInput" class="input-text" placeholder="新しい名前で保存...">
-                        <button class="btn-control" onclick="processUploadNew()">新規保存</button>
+                        <input type="text" id="newBoardInput" class="input-text" placeholder="別名で保存（コピー）...">
+                        <button class="btn-control" onclick="processUploadAs()">保存</button>
                     </div>
+                    <p class="cloud-hint" id="cloud-as-hint">※ 名前を付けて保存すると、そのファイルがこのタブの同期先になります</p>
                 </div>
                 <div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                        <span style="font-size:0.85rem; color:#a0aec0;">クラウド上のファイル一覧:</span>
+                        <span style="font-size:0.85rem; color:#a0aec0;">クラウド上のファイル一覧（🔗＝同期先にする）</span>
                         <button class="btn-mini" style="background:none; border:1px solid #4a5568; color:#cbd5e0;" onclick="refreshBoardList()">↻ 更新</button>
                     </div>
                     <div id="cloudList" class="board-list" style="height:250px;">
@@ -277,7 +306,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
 
     <!-- 既存ロジック -->
-    <script src="js/main.js?v=20260721b"></script>
+    <script src="js/main.js?v=20260827"></script>
 
     <!-- CodeMirror初期化 -->
     <script src="js/cm-init.js?v=20260710"></script>

@@ -35,7 +35,12 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         let blobCache = {};
         
         let currentTabId = 1;
-        let boardNames = { 1: "default", 2: "tab2", 3: "tab3" };
+        // タブの表示名（ローカル専用。クラウドのファイル名とは切り離して管理する）
+        let tabLabels = { 1: "タブ1", 2: "タブ2", 3: "タブ3" };
+        // タブごとのクラウド同期先 { board: ボード名, syncedAt: ISO文字列 } / 未リンクは null
+        let tabCloud = { 1: null, 2: null, 3: null };
+        // クラウド一覧のキャッシュ [{ name, updatedAt }]
+        let cloudBoardCache = [];
         
         let isMinimalMode = false;
 
@@ -52,9 +57,15 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             const savedTabId = await getSetting('current_tab_id');
             if (savedTabId) currentTabId = savedTabId;
 
+            // タブ名と同期先を復元。旧版(board_name_n)は表示名と同期先を兼ねていたので両方へ引き継ぐ
             for (let i = 1; i <= 3; i++) {
-                const savedName = await getSetting(`board_name_${i}`);
-                if (savedName) boardNames[i] = savedName;
+                const label  = await getSetting(`tab_label_${i}`);
+                const link   = await getSetting(`tab_cloud_${i}`);
+                const legacy = await getSetting(`board_name_${i}`);
+                if (label) tabLabels[i] = label;
+                else if (legacy) tabLabels[i] = legacy;
+                if (link) tabCloud[i] = link;
+                else if (legacy) tabCloud[i] = { board: legacy, syncedAt: null };
             }
             
             // 保存済みの書体を復元
@@ -106,13 +117,80 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         function updateTabUI() {
             for (let i = 1; i <= 3; i++) {
                 const btn = document.getElementById(`tab-btn-${i}`);
-                if (btn) {
-                    if (i === currentTabId) btn.classList.add('active');
-                    else btn.classList.remove('active');
-                }
+                if (btn) btn.classList.toggle('active', i === currentTabId);
+
                 const nameEl = document.getElementById(`tab-name-${i}`);
-                if (nameEl) nameEl.textContent = boardNames[i];
+                if (nameEl) nameEl.textContent = tabLabels[i];
+                // 編集中のinputは書き換えない（入力途中の文字が消えるため）
+                const inputEl = document.getElementById(`tab-name-input-${i}`);
+                if (inputEl && document.activeElement !== inputEl) inputEl.value = tabLabels[i];
+
+                const cloudEl = document.getElementById(`tab-cloud-${i}`);
+                if (cloudEl) {
+                    const link = tabCloud[i];
+                    if (link && link.board) {
+                        cloudEl.textContent = `☁ ${link.board}` + (link.syncedAt ? ` ・ ${formatSyncTime(link.syncedAt)}` : '');
+                        cloudEl.classList.remove('unlinked');
+                    } else {
+                        cloudEl.textContent = '☁ 未リンク';
+                        cloudEl.classList.add('unlinked');
+                    }
+                }
             }
+        }
+
+        // 同期時刻の表示（今日なら時刻だけ、別日なら日付も出す）
+        function formatSyncTime(iso) {
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            const p = n => String(n).padStart(2, '0');
+            const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+            const now = new Date();
+            const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+            return sameDay ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+        }
+        function formatFullTime(iso) {
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            const p = n => String(n).padStart(2, '0');
+            return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        }
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        // --- タブ名のリネーム（アクティブなタブの名前欄をその場で編集する） ---
+        function onTabNameKeydown(e, tabId) {
+            if (e.key === 'Enter') e.target.blur();
+            else if (e.key === 'Escape') { e.target.value = tabLabels[tabId]; e.target.blur(); }
+        }
+        async function commitTabName(tabId, value) {
+            const name = (value || '').trim().slice(0, 20);
+            if (!name || name === tabLabels[tabId]) { updateTabUI(); return; }
+            tabLabels[tabId] = name;
+            await setSetting(`tab_label_${tabId}`, name);
+            updateTabUI();
+            updateBoardDisplay();
+        }
+
+        // --- タブとクラウドの紐付け ---
+        function getCurrentBoard() {
+            const link = tabCloud[currentTabId];
+            return (link && link.board) ? link.board : null;
+        }
+        async function setTabCloudLink(tabId, boardName, syncedAt) {
+            tabCloud[tabId] = boardName ? { board: boardName, syncedAt: syncedAt || null } : null;
+            await setSetting(`tab_cloud_${tabId}`, tabCloud[tabId]);
+            updateTabUI();
+            updateBoardDisplay();
+        }
+        // 一覧から「読み込まずに同期先だけ張り替える」
+        async function linkTabToBoard(boardName) {
+            const cur = tabCloud[currentTabId];
+            const keepTime = (cur && cur.board === boardName) ? cur.syncedAt : null;
+            await setTabCloudLink(currentTabId, boardName, keepTime);
+            updateStatus(`同期先: ${boardName}`, true);
+            renderBoardList();
         }
 
         function toggleMinimalUI() {
@@ -234,8 +312,26 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         }
 
         function updateBoardDisplay() {
-            const cloudNameEl = document.getElementById('cloud-current-name');
-            if (cloudNameEl) cloudNameEl.textContent = boardNames[currentTabId];
+            const board = getCurrentBoard();
+            const nameEl = document.getElementById('cloud-current-name');
+            if (nameEl) nameEl.textContent = tabLabels[currentTabId];
+
+            const linkEl = document.getElementById('cloud-current-link');
+            if (linkEl) {
+                linkEl.textContent = board ? `☁ ${board}` : '☁ 未リンク';
+                linkEl.classList.toggle('unlinked', !board);
+            }
+            const upBtn = document.getElementById('btn-upload-linked');
+            if (upBtn) {
+                upBtn.disabled = !board;
+                upBtn.textContent = board ? `⬆️ 「${board}」に上書き保存` : '⬆️ 同期先がまだありません';
+            }
+            const hint = document.getElementById('cloud-as-hint');
+            if (hint) {
+                hint.textContent = board
+                    ? `※ 別名保存はコピーを作るだけで、同期先は「${board}」のままです（変えるなら一覧の🔗）`
+                    : '※ 名前を付けて保存すると、そのファイルがこのタブの同期先になります';
+            }
             updateTabUI();
         }
 
@@ -260,24 +356,11 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 const json = await res.json();
 
                 if(json.status === 'success') {
-                    listEl.innerHTML = '';
-                    if(json.boards.length === 0) listEl.innerHTML = '<div style="padding:20px; text-align:center; color:#cbd5e0;">ファイルがありません</div>';
-                    else {
-                        json.boards.forEach(name => {
-                            const div = document.createElement('div');
-                            div.className = 'file-row';
-                            const isCurrent = (name === boardNames[currentTabId]);
-                            if(isCurrent) div.style.cssText = 'border-left: 3px solid #48bb78; background-color:#2f855a;';
-                            div.innerHTML = `
-                                <div class="file-name" onclick="processDownload('${name}')">${isCurrent ? '👉 ' : '📄 '}${name}</div>
-                                <div class="file-actions">
-                                    <button class="btn-mini btn-load" onclick="processDownload('${name}')">読込</button>
-                                    <button class="btn-mini btn-trash" onclick="deleteBoard('${name}')">削除</button>
-                                </div>
-                            `;
-                            listEl.appendChild(div);
-                        });
-                    }
+                    // 新GASは boardsInfo（更新日時つき）を返す。旧GASのまま(boardsのみ)でも動くようにしておく
+                    cloudBoardCache = Array.isArray(json.boardsInfo)
+                        ? json.boardsInfo.map(b => ({ name: b.name, updatedAt: b.updatedAt || null }))
+                        : (json.boards || []).map(n => ({ name: n, updatedAt: null }));
+                    renderBoardList();
                 } else {
                     if(json.message && json.message.includes("合言葉")) await clearAuthPassword();
                     throw new Error(json.message);
@@ -285,19 +368,63 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             } catch(e) { listEl.innerHTML = `<div style="color:#f56565; padding:10px;">エラー: ${e.message}</div>`; }
         }
 
-        async function processUploadNew() {
+        // クラウド一覧の描画。読込・リンク・削除はそれぞれ別ボタン（名前をタップしても何も起きない）
+        function renderBoardList() {
+            const listEl = document.getElementById('cloudList');
+            if (!listEl) return;
+            if (cloudBoardCache.length === 0) {
+                listEl.innerHTML = '<div style="padding:20px; text-align:center; color:#cbd5e0;">ファイルがありません</div>';
+                return;
+            }
+            const currentBoard = getCurrentBoard();
+            listEl.innerHTML = '';
+            cloudBoardCache.forEach(b => {
+                const linkedTabs = [1, 2, 3].filter(i => tabCloud[i] && tabCloud[i].board === b.name);
+                const isCurrent = (b.name === currentBoard);
+                const chips = linkedTabs.map(i =>
+                    `<span class="tab-chip${i === currentTabId ? ' me' : ''}">🔗${escapeHtml(tabLabels[i])}</span>`
+                ).join('');
+
+                const div = document.createElement('div');
+                div.className = 'file-row' + (isCurrent ? ' file-row-current' : '');
+                div.innerHTML = `
+                    <div class="file-main">
+                        <div class="file-name">📄 ${escapeHtml(b.name)}${chips}</div>
+                        <div class="file-meta">${b.updatedAt ? '更新 ' + formatFullTime(b.updatedAt) : ''}</div>
+                    </div>
+                    <div class="file-actions">
+                        <button class="btn-mini btn-load" title="このタブに読み込む">📥 読込</button>
+                        <button class="btn-mini btn-link" title="読み込まずに、このタブの同期先にする"${isCurrent ? ' disabled' : ''}>🔗</button>
+                        <button class="btn-mini btn-trash" title="クラウドから削除">🗑</button>
+                    </div>
+                `;
+                div.querySelector('.btn-load').addEventListener('click', () => processDownload(b.name));
+                div.querySelector('.btn-link').addEventListener('click', () => linkTabToBoard(b.name));
+                div.querySelector('.btn-trash').addEventListener('click', () => deleteBoard(b.name));
+                listEl.appendChild(div);
+            });
+        }
+
+        // 同期先にそのまま上書き保存
+        async function processUploadLinked() {
+            const board = getCurrentBoard();
+            if (!board) { alert("まだ同期先がありません。下の欄に名前を入れて保存してください。"); return; }
+            await processUpload(board, true);
+        }
+        // 別名で保存（＝コピーを作る）。未リンクのタブなら、この保存でそのまま同期先になる
+        async function processUploadAs() {
             const name = document.getElementById('newBoardInput').value.trim();
             if(!name) return alert("名前を入力してください");
-            processUpload(name);
+            const board = getCurrentBoard();
+            if (name !== board && cloudBoardCache.some(b => b.name === name)) {
+                if(!confirm(`クラウドに「${name}」が既にあります。上書きしますか？`)) return;
+            }
+            await processUpload(name, !board || name === board);
         }
 
-        async function processUploadCurrent() {
-            await processUpload(boardNames[currentTabId]);
-        }
-
-        async function processUpload(boardName) {
+        // linkAfter: true なら保存後にこのタブの同期先を boardName に更新する
+        async function processUpload(boardName, linkAfter) {
             const pass = await getAuthPassword(); if (!pass) return;
-            if(!confirm(`ボード「${boardName}」として保存しますか？`)) return;
             updateStatus("送信中...", false);
             try {
                 const activeStore = getActiveStore();
@@ -329,10 +456,10 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 const json = await res.json();
                 
                 if(json.status === 'success') { 
-                    boardNames[currentTabId] = boardName;
-                    await setSetting(`board_name_${currentTabId}`, boardName);
-                    updateBoardDisplay(); document.getElementById('newBoardInput').value = "";
-                    updateStatus("保存完了", true); alert(`保存完了: ${boardName}`);
+                    if (linkAfter) await setTabCloudLink(currentTabId, boardName, new Date().toISOString());
+                    else updateBoardDisplay();
+                    document.getElementById('newBoardInput').value = "";
+                    updateStatus(`☁ ${boardName} に保存`, true);
                     refreshBoardList(); 
                 } else throw new Error(json.message);
             } catch(e) { console.error(e); updateStatus("UP失敗", false, true); alert(e.message); }
@@ -346,13 +473,24 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                 const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=delete&boardName=${encodeURIComponent(boardName)}`;
                 const res = await fetch(url, { method: 'POST' });
                 const json = await res.json();
-                if(json.status === 'success') { updateStatus("削除完了", true); refreshBoardList(); }
+                if(json.status === 'success') {
+                    // 消したボードを指していたタブは未リンクへ戻す
+                    for (let i = 1; i <= 3; i++) {
+                        if (tabCloud[i] && tabCloud[i].board === boardName) {
+                            tabCloud[i] = null;
+                            await setSetting(`tab_cloud_${i}`, null);
+                        }
+                    }
+                    updateTabUI(); updateBoardDisplay();
+                    updateStatus("削除完了", true); refreshBoardList();
+                }
                 else throw new Error(json.message);
             } catch(e) { alert("削除失敗: " + e.message); updateStatus("削除失敗", false, true); }
         }
 
         async function processDownload(boardName) {
-            if(!confirm(`ボード「${boardName}」を読み込みますか？\n(現在の作業内容は上書きされます)`)) return;
+            const label = tabLabels[currentTabId];
+            if(!confirm(`クラウドの「${boardName}」を タブ「${label}」に読み込みます。\n「${label}」の今の内容は消えます。よろしいですか？`)) return;
             updateStatus("受信中...", false);
             const pass = await getAuthPassword(); 
             try {
@@ -409,15 +547,13 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
 
                 await Promise.all(savePromises);
 
-                boardNames[currentTabId] = boardName;
-                await setSetting(`board_name_${currentTabId}`, boardName);
+                await setTabCloudLink(currentTabId, boardName, new Date().toISOString());
                 
                 updateBoardDisplay();
                 loadFromDB(); 
                 
                 closeModal('cloudModal'); 
-                updateStatus("読込完了", true);
-                alert(`読み込み完了: ${boardName}`);
+                updateStatus(`☁ ${boardName} を読込`, true);
             } catch(e) { console.error(e); updateStatus("DOWN失敗", false, true); alert(e.message); }
         }
 
@@ -524,7 +660,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             };
         }
         async function clearAllData(skip=false) {
-            if(!skip && !confirm("現在のタブのデータを全削除しますか？")) return;
+            if(!skip && !confirm(`タブ「${tabLabels[currentTabId]}」のウィンドウを全部消しますか？`)) return;
             if (window.cmDestroyAllEditors) window.cmDestroyAllEditors();
             document.getElementById('canvas').innerHTML=''; blobCache={};
             const activeStore = getActiveStore();

@@ -164,16 +164,23 @@ function handleRequest(e) {
     // ------------------------------------------
     if (action === "list") {
       const files = DriveApp.searchFiles(`title contains '${FILE_PREFIX}' and trashed = false`);
-      const boardNames = [];
+      const infoMap = {}; // ボード名 -> 更新日時(ISO)。同名が複数あれば新しい方を採用
       while (files.hasNext()) {
         const f = files.next();
         const name = f.getName();
         if (name.endsWith(".json")) {
-            boardNames.push(name.replace(FILE_PREFIX, "").replace(".json", ""));
+            const board = name.replace(FILE_PREFIX, "").replace(".json", "");
+            const updatedAt = f.getLastUpdated().toISOString();
+            if (!infoMap[board] || infoMap[board] < updatedAt) infoMap[board] = updatedAt;
         }
       }
-      const uniqueNames = [...new Set(boardNames)].sort();
-      return createJsonOutput({ status: "success", boards: uniqueNames });
+      const uniqueNames = Object.keys(infoMap).sort();
+      // boards は旧クライアント互換用、boardsInfo が更新日時つきの新形式
+      return createJsonOutput({
+        status: "success",
+        boards: uniqueNames,
+        boardsInfo: uniqueNames.map(function(n) { return { name: n, updatedAt: infoMap[n] }; })
+      });
     }
 
     // ------------------------------------------
