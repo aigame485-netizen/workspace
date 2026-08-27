@@ -578,8 +578,15 @@
             border-radius: 4px;
         }
         .cli-folder-header:hover { background-color: #4a5568; }
-        .cli-folder-files { padding-left: 15px; display: none; }
-        .cli-folder.open .cli-folder-files { display: block; }
+        .cli-folder-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cli-folder-arrow {
+            font-size: 0.6rem; color: #a0aec0; flex-shrink: 0;
+            transition: transform 0.15s; display: inline-block;
+        }
+        .cli-folder.open > .cli-folder-header .cli-folder-arrow { transform: rotate(90deg); }
+        /* 直下の子だけを対象にする（入れ子フォルダが親の開閉に巻き込まれないように） */
+        .cli-folder > .cli-folder-files { padding-left: 12px; display: none; }
+        .cli-folder.open > .cli-folder-files { display: block; }
         .cli-file-item {
             display: flex; align-items: center; justify-content: space-between;
             padding: 8px 10px; margin: 2px 0; border-radius: 4px; cursor: pointer;

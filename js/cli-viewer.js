@@ -30,6 +30,7 @@ let cliImageMode = false;           // 現在開いているファイルが画�
 let cliPreviewMode = false;         // マークダウンを整形表示しているか
 let cliPreviewTimer = null;         // 整形表示の再描画を間引くためのタイマー
 let cliPreviewLastFile = null;      // 整形表示が最後に描画したファイル（別ファイルなら先頭へ戻す）
+let cliOpenFolders = new Set();     // 展開中のフォルダパス（再描画で畳み直されないよう覚えておく）
 let cliStatusTimer = null;          // 進捗トーストを自動で引っ込めるタイマー
 const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
 
@@ -466,68 +467,113 @@ function cliRenderFileTree(files) {
         return;
     }
 
-    // フォルダでグルーピング
-    const folders = {};
-    const rootFiles = [];
+    const root = cliBuildFileTree(files);
+
+    // 今開いているファイルまでの道筋は自動で開けておく（選択中のファイルが埋もれないように）
+    if (cliCurrentFile) {
+        const parts = cliCurrentFile.split('/');
+        parts.pop();
+        let prefix = '';
+        parts.forEach(p => {
+            prefix = prefix ? prefix + '/' + p : p;
+            cliOpenFolders.add(prefix);
+        });
+    }
+
+    // フォルダ → ルート直下のファイル、の順に並べる
+    [...root.dirs.values()]
+        .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+        .forEach(dir => treeEl.appendChild(cliCreateFolderNode(dir)));
+
+    root.files.forEach(f => treeEl.appendChild(cliCreateFileItem(f)));
+}
+
+// パスの配列から階層構造を組み立てる
+// 例: 4作目/シナリオ/日常.md → { dirs: { 4作目: { dirs: { シナリオ: { files: [日常.md] } } } } }
+function cliBuildFileTree(files) {
+    const root = { name: '', path: '', dirs: new Map(), files: [] };
 
     files.forEach(f => {
         const parts = f.path.split('/');
-        if (parts.length > 1) {
-            const folder = parts.slice(0, -1).join('/');
-            if (!folders[folder]) folders[folder] = [];
-            folders[folder].push(f);
-        } else {
-            rootFiles.push(f);
-        }
-    });
-
-    // フォルダ表示
-    Object.keys(folders).sort().forEach(folderName => {
-        const folderDiv = document.createElement('div');
-        folderDiv.className = 'cli-folder';
-
-        const header = document.createElement('div');
-        header.className = 'cli-folder-header';
-
-        const headerLabel = document.createElement('span');
-        headerLabel.style.cssText = 'flex:1; overflow:hidden; text-overflow:ellipsis;';
-        headerLabel.innerHTML = `📁 ${folderName} <span style="color:#a0aec0; font-weight:normal;">(${folders[folderName].length})</span>`;
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'cli-folder-delete';
-        deleteBtn.textContent = '🗑';
-        deleteBtn.title = 'フォルダごと削除';
-        deleteBtn.onclick = (e) => {
-            e.stopPropagation();
-            cliDeleteFolder(folderName, folders[folderName]);
-        };
-
-        header.appendChild(headerLabel);
-        header.appendChild(deleteBtn);
-
-        header.onclick = (e) => {
-            if (e.target === deleteBtn) return;
-            folderDiv.classList.toggle('open');
-            const icon = folderDiv.classList.contains('open') ? '📂' : '📁';
-            headerLabel.innerHTML = `${icon} ${folderName} <span style="color:#a0aec0; font-weight:normal;">(${folders[folderName].length})</span>`;
-        };
-
-        const filesDiv = document.createElement('div');
-        filesDiv.className = 'cli-folder-files';
-
-        folders[folderName].forEach(f => {
-            filesDiv.appendChild(cliCreateFileItem(f));
+        parts.pop();  // ファイル名を除いた部分がフォルダ階層
+        let node = root;
+        let prefix = '';
+        parts.forEach(p => {
+            prefix = prefix ? prefix + '/' + p : p;
+            if (!node.dirs.has(p)) {
+                node.dirs.set(p, { name: p, path: prefix, dirs: new Map(), files: [] });
+            }
+            node = node.dirs.get(p);
         });
-
-        folderDiv.appendChild(header);
-        folderDiv.appendChild(filesDiv);
-        treeEl.appendChild(folderDiv);
+        node.files.push(f);
     });
 
-    // ルート直下のファイル
-    rootFiles.forEach(f => {
-        treeEl.appendChild(cliCreateFileItem(f));
-    });
+    return root;
+}
+
+// そのフォルダ以下にあるファイルを全部集める（件数表示とフォルダ削除に使う）
+function cliCollectFiles(node, out = []) {
+    node.files.forEach(f => out.push(f));
+    node.dirs.forEach(d => cliCollectFiles(d, out));
+    return out;
+}
+
+function cliCreateFolderNode(node) {
+    const contained = cliCollectFiles(node);
+    const isOpen = cliOpenFolders.has(node.path);
+
+    const folderDiv = document.createElement('div');
+    folderDiv.className = 'cli-folder' + (isOpen ? ' open' : '');
+
+    const header = document.createElement('div');
+    header.className = 'cli-folder-header';
+
+    const arrow = document.createElement('span');
+    arrow.className = 'cli-folder-arrow';
+    arrow.textContent = '▶';
+
+    const headerLabel = document.createElement('span');
+    headerLabel.className = 'cli-folder-label';
+    const renderLabel = () => {
+        const icon = folderDiv.classList.contains('open') ? '📂' : '📁';
+        headerLabel.innerHTML = `${icon} ${escapeHtml(node.name)} <span style="color:#a0aec0; font-weight:normal;">(${contained.length})</span>`;
+    };
+    renderLabel();
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'cli-folder-delete';
+    deleteBtn.textContent = '🗑';
+    deleteBtn.title = 'フォルダごと削除（中のフォルダも含む）';
+    deleteBtn.onclick = (e) => {
+        e.stopPropagation();
+        cliDeleteFolder(node.path, contained);
+    };
+
+    header.appendChild(arrow);
+    header.appendChild(headerLabel);
+    header.appendChild(deleteBtn);
+
+    header.onclick = (e) => {
+        if (e.target === deleteBtn) return;
+        const nowOpen = folderDiv.classList.toggle('open');
+        if (nowOpen) cliOpenFolders.add(node.path);
+        else cliOpenFolders.delete(node.path);
+        renderLabel();
+    };
+
+    const childrenDiv = document.createElement('div');
+    childrenDiv.className = 'cli-folder-files';
+
+    // 子フォルダを先に、その下にファイルを並べる
+    [...node.dirs.values()]
+        .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+        .forEach(dir => childrenDiv.appendChild(cliCreateFolderNode(dir)));
+
+    node.files.forEach(f => childrenDiv.appendChild(cliCreateFileItem(f)));
+
+    folderDiv.appendChild(header);
+    folderDiv.appendChild(childrenDiv);
+    return folderDiv;
 }
 
 function cliCreateFileItem(fileInfo) {
