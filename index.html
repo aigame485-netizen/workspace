@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     
     <!-- ?v= はキャッシュバスター。JS/CSSを更新したらこの数字を上げること -->
-    <link rel="stylesheet" href="css/style.css?v=20260827">
+    <link rel="stylesheet" href="css/style.css?v=20260827b">
 </head>
 <body>
 
@@ -18,15 +18,6 @@
         
         <!-- UI非表示ボタン -->
         <button class="btn-control btn-ui-toggle" onclick="toggleMinimalUI()" title="UI表示切替">👁️</button>
-        <!-- 連動スイッチ -->
-        <div class="control-group" style="margin-right:5px;">
-             <label class="switch">
-                <input type="checkbox" id="syncToggle">
-                <span class="slider"></span>
-            </label>
-            <label for="syncToggle" class="switch-label">連動</label>
-        </div>
-
         <!-- セリフ照合の一致率（%） -->
         <div class="control-group serifu-threshold-box" title="セリフ使用済み判定の一致率（%）。👑ウィンドウと照合します">
             <span class="switch-label">👑照合</span>
@@ -119,7 +110,7 @@
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(-2)">A-</button>
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(2)">A+</button>
             <button class="btn-tool" onclick="cliRefreshFiles()">🔄</button>
-            <button class="btn-tool" onclick="cliOpenSettings()" title="暗号キー・合言葉の設定">🔐</button>
+            <button class="btn-tool" onclick="openConnectionSettings()" title="合言葉・暗号キーの設定">🔐</button>
         </div>
 
         <div class="cli-sidebar" id="cli-sidebar">
@@ -210,16 +201,12 @@
         <div class="modal-box" style="max-width: 450px;">
             <h3 class="modal-title">☁️ クラウド連携</h3>
             <div class="modal-body">
-                <div style="background:#1a202c; padding:10px; border-radius:4px; margin-bottom:10px; border:1px solid #4a5568;">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <span style="font-size:0.9rem; color:#ecc94b;">🔐 E2E暗号化</span>
-                        <span id="encKeyStatus" style="font-size:0.75rem;">確認中...</span>
+                <div class="conn-summary">
+                    <div class="conn-summary-text">
+                        <span id="conn-summary-auth">🗝️ 合言葉 確認中...</span>
+                        <span id="conn-summary-enc">🔐 暗号化 確認中...</span>
                     </div>
-                    <div class="input-group">
-                        <input type="text" id="encKeyInput" class="input-text" placeholder="暗号キーを入力..." style="flex:1;">
-                        <button class="btn-control" onclick="saveEncKey()" style="padding:6px 10px;">設定</button>
-                        <button class="btn-control btn-danger" onclick="removeEncKey()" style="padding:6px 10px;">解除</button>
-                    </div>
+                    <button class="btn-control" onclick="openConnectionSettings()">🔐 接続設定</button>
                 </div>
                 <div class="cloud-sync-box">
                     <div class="cloud-sync-row">
@@ -251,35 +238,47 @@
         </div>
     </div>
 
-    <!-- CLI接続設定モーダル（暗号キー・合言葉をCLIビューア内から変更できる） -->
-    <div id="cliSettingsModal" class="modal-overlay" onclick="if(event.target===this) closeModal('cliSettingsModal')">
-        <div class="modal-box" style="max-width: 420px;">
+    <!-- 接続設定モーダル（合言葉・暗号キーの入力口はここ1箇所に集約） -->
+    <div id="connSettingsModal" class="modal-overlay" onclick="if(event.target===this) closeConnectionSettings()">
+        <div class="modal-box" style="max-width: 440px;">
             <h3 class="modal-title">🔐 接続設定</h3>
             <div class="modal-body">
-                <div class="cli-settings-block">
-                    <div class="cli-settings-row">
-                        <span class="cli-settings-label">🔐 E2E暗号キー</span>
-                        <span id="cli-enc-status" class="cli-settings-status">確認中...</span>
-                    </div>
-                    <div class="input-group">
-                        <input type="text" id="cli-enc-key-input" class="input-text" placeholder="暗号キーを入力..." style="flex:1;">
-                        <button class="btn-control" onclick="cliSaveEncKey()" style="padding:6px 10px;">設定</button>
-                        <button class="btn-control btn-danger" onclick="cliRemoveEncKey()" style="padding:6px 10px;">解除</button>
-                    </div>
+                <div id="conn-need-auth" class="conn-need-auth" style="display:none;">
+                    ⚠️ サーバーに接続するには合言葉が必要です。下の欄に入力してください。
                 </div>
-                <div class="cli-settings-block">
-                    <div class="cli-settings-row">
-                        <span class="cli-settings-label">🗝️ 合言葉（サーバー認証）</span>
-                        <span id="cli-auth-status" class="cli-settings-status">確認中...</span>
+
+                <div class="conn-block">
+                    <div class="conn-row">
+                        <span class="conn-label">🗝️ 合言葉</span>
+                        <span id="conn-auth-status" class="conn-status">確認中...</span>
                     </div>
+                    <p class="conn-desc">サーバー（GAS）に接続するための鍵。PCの cli_encrypt_upload.py と同じものを入れます。</p>
                     <div class="input-group">
-                        <button class="btn-control" onclick="cliChangeAuthPassword()" style="flex:1;">再入力</button>
-                        <button class="btn-control btn-danger" onclick="cliClearAuthPassword()" style="padding:6px 10px;">クリア</button>
+                        <input type="password" id="conn-auth-input" class="input-text" placeholder="合言葉を入力..." style="flex:1;"
+                               autocomplete="off" onkeydown="if(event.key==='Enter') saveAuthPassword()">
+                        <button class="btn-eye" onclick="toggleSecretVisible('conn-auth-input', this)" title="入力内容を表示">👁</button>
+                        <button class="btn-control" onclick="saveAuthPassword()" style="padding:6px 12px;">保存</button>
                     </div>
+                    <button class="btn-control btn-danger conn-clear" onclick="clearAuthPasswordUI()">保存済みの合言葉をクリア</button>
+                </div>
+
+                <div class="conn-block">
+                    <div class="conn-row">
+                        <span class="conn-label">🔐 暗号キー</span>
+                        <span id="conn-enc-status" class="conn-status">確認中...</span>
+                    </div>
+                    <p class="conn-desc">クラウド上のデータを暗号化する鍵。この端末の中だけに保存され、Google側には送られません。</p>
+                    <div class="input-group">
+                        <input type="password" id="conn-enc-input" class="input-text" placeholder="暗号キーを入力..." style="flex:1;"
+                               autocomplete="off" onkeydown="if(event.key==='Enter') saveEncKey()">
+                        <button class="btn-eye" onclick="toggleSecretVisible('conn-enc-input', this)" title="入力内容を表示">👁</button>
+                        <button class="btn-control" onclick="saveEncKey()" style="padding:6px 12px;">保存</button>
+                    </div>
+                    <button class="btn-control btn-danger conn-clear" onclick="removeEncKey()">暗号キーを解除する</button>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-control" onclick="closeModal('cliSettingsModal')">閉じる</button>
+                <button class="btn-control" onclick="closeConnectionSettings()">閉じる</button>
             </div>
         </div>
     </div>
@@ -306,15 +305,15 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
 
     <!-- 既存ロジック -->
-    <script src="js/main.js?v=20260827"></script>
+    <script src="js/main.js?v=20260827b"></script>
 
     <!-- CodeMirror初期化 -->
-    <script src="js/cm-init.js?v=20260710"></script>
+    <script src="js/cm-init.js?v=20260827b"></script>
 
     <!-- セリフ使用済みチェッカー -->
     <script src="js/serifu-check.js?v=20260710"></script>
 
     <!-- CLI Viewer -->
-    <script src="js/cli-viewer.js?v=20260821"></script>
+    <script src="js/cli-viewer.js?v=20260827b"></script>
 </body>
 </html>

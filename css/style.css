@@ -1092,21 +1092,52 @@
         .cli-proposal-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
 
         /* =========================================
-           CLI接続設定モーダル（暗号キー・合言葉）
+           接続設定モーダル（合言葉・暗号キー）
+           Canvas / CLIビューアの両方から同じものを開く
            ========================================= */
-        .cli-settings-block {
+        .conn-block {
             background: #1a202c;
             border: 1px solid #4a5568;
             border-radius: 4px;
             padding: 10px;
             display: flex; flex-direction: column; gap: 8px;
         }
-        .cli-settings-row {
+        .conn-row {
             display: flex; align-items: center; justify-content: space-between;
             gap: 8px;
         }
-        .cli-settings-label { font-size: 0.9rem; color: #ecc94b; white-space: nowrap; }
-        .cli-settings-status { font-size: 0.75rem; text-align: right; }
+        .conn-label { font-size: 0.9rem; color: #ecc94b; white-space: nowrap; font-weight: bold; }
+        .conn-status { font-size: 0.75rem; text-align: right; }
+        .conn-desc { margin: 0; font-size: 0.72rem; color: #a0aec0; line-height: 1.5; }
+        /* 解除・クリアは誤爆しにくいよう控えめな見た目にする */
+        .conn-clear {
+            background: transparent; border: 1px solid #9b2c2c; color: #fc8181;
+            font-size: 0.72rem; padding: 5px 8px;
+        }
+        .conn-clear:hover { background: #9b2c2c; color: #fff; }
+        /* 伏字の一時解除ボタン */
+        .btn-eye {
+            background: #4a5568; color: #e2e8f0; border: none;
+            padding: 6px 9px; border-radius: 4px; cursor: pointer;
+            font-size: 0.85rem; flex-shrink: 0;
+        }
+        .btn-eye:hover { background: #718096; }
+        .btn-eye.active { background: #2b6cb0; color: #fff; }
+        /* 合言葉が必要で開かれたときの案内 */
+        .conn-need-auth {
+            background: #744210; border: 1px solid #d69e2e; color: #fefcbf;
+            border-radius: 4px; padding: 8px 10px; font-size: 0.8rem; line-height: 1.5;
+        }
+
+        /* クラウドモーダル上部の接続状況サマリ */
+        .conn-summary {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            background: #1a202c; border: 1px solid #4a5568; border-radius: 4px; padding: 8px 10px;
+        }
+        .conn-summary-text {
+            display: flex; flex-direction: column; gap: 2px;
+            font-size: 0.75rem; min-width: 0;
+        }
 
         /* =========================================
            PC最適化

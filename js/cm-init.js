@@ -90,20 +90,6 @@ function createEditor(textarea, winId, fontSize = "14px") {
         editor._resizeObserver = resizeObserver; // destroy時に解除するため保持
     }
 
-    // 連動スクロール
-    editor.on("scroll", function(cm) {
-        const syncToggle = document.getElementById('syncToggle');
-        if (syncToggle && syncToggle.checked) {
-            const scrollInfo = cm.getScrollInfo();
-            // 他のCodeMirrorエディタにもスクロールを同期
-            for (const [id, otherEditor] of Object.entries(editorInstances)) {
-                if (id !== winId) {
-                    otherEditor.scrollTo(scrollInfo.left, scrollInfo.top);
-                }
-            }
-        }
-    });
-
     editorInstances[winId] = editor;
     // タブ切替や復元でエディタが作り直された時にも照合し直す
     if (typeof window.scheduleSerifuCheck === 'function') {

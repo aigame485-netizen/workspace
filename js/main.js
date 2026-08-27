@@ -213,11 +213,18 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         }
         async function getAuthPassword() {
             let pass = await getSetting('auth_password');
-            if(!pass) {
-                pass = prompt("合言葉を入力してください");
-                if(pass) await setSetting('auth_password', pass);
-            }
+            if (!pass) pass = await requestAuthPassword();
             return pass;
+        }
+        // 未設定なら接続設定モーダルを開いて入力を待つ
+        // （prompt()だと「何の合言葉か」「どこで直せるのか」が分からないため）
+        function requestAuthPassword() {
+            return new Promise(resolve => {
+                // 前の待ちが残っていたら打ち切る
+                if (authRequestResolve) { const prev = authRequestResolve; authRequestResolve = null; prev(null); }
+                authRequestResolve = resolve;
+                openConnectionSettings(true);
+            });
         }
         async function clearAuthPassword() {
             const tx = db.transaction([STORE_SETTINGS], 'readwrite');
@@ -288,27 +295,97 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             return new TextDecoder().decode(decrypted);
         }
 
-        async function updateEncKeyStatus() {
+        // --- 接続設定（合言葉・暗号キー）。入力口はこのモーダル1箇所に集約する ---
+        // 合言葉の入力待ちを解決するための関数を一時的に保持する
+        let authRequestResolve = null;
+
+        function openConnectionSettings(forAuth = false) {
+            const authInput = document.getElementById('conn-auth-input');
+            const encInput = document.getElementById('conn-enc-input');
+            if (authInput) { authInput.value = ''; authInput.type = 'password'; }
+            if (encInput) { encInput.value = ''; encInput.type = 'password'; }
+
+            const note = document.getElementById('conn-need-auth');
+            if (note) note.style.display = forAuth ? 'block' : 'none';
+
+            document.getElementById('connSettingsModal').classList.add('show');
+            updateConnectionStatus();
+            if (forAuth && authInput) setTimeout(() => authInput.focus(), 100);
+        }
+        function closeConnectionSettings() {
+            document.getElementById('connSettingsModal').classList.remove('show');
+            // 合言葉の入力待ちだった場合は「入力なし」として解決する
+            if (authRequestResolve) { const r = authRequestResolve; authRequestResolve = null; r(null); }
+        }
+        // 合言葉・暗号キーの設定状況を、モーダルとクラウドモーダルの両方へ反映
+        async function updateConnectionStatus() {
+            const pass = await getSetting('auth_password');   // getAuthPasswordだとモーダルが再帰的に開くので直接読む
             const key = await getEncryptionKey();
-            const el = document.getElementById('encKeyStatus');
-            if (el) {
-                el.textContent = key ? '🔒 暗号化有効' : '🔓 暗号化無効（平文保存）';
-                el.style.color = key ? '#48bb78' : '#f6ad55';
+
+            const authEl = document.getElementById('conn-auth-status');
+            if (authEl) {
+                authEl.textContent = pass ? '✅ 設定済み' : '⚠️ 未設定';
+                authEl.style.color = pass ? '#48bb78' : '#f6ad55';
+            }
+            const encEl = document.getElementById('conn-enc-status');
+            if (encEl) {
+                encEl.textContent = key ? '🔒 有効' : '🔓 無効（平文で保存されます）';
+                encEl.style.color = key ? '#48bb78' : '#f6ad55';
+            }
+            const sumAuth = document.getElementById('conn-summary-auth');
+            if (sumAuth) {
+                sumAuth.textContent = pass ? '🗝️ 合言葉 設定済み' : '🗝️ 合言葉 未設定';
+                sumAuth.style.color = pass ? '#68d391' : '#f6ad55';
+            }
+            const sumEnc = document.getElementById('conn-summary-enc');
+            if (sumEnc) {
+                sumEnc.textContent = key ? '🔒 暗号化 有効' : '🔓 暗号化 無効';
+                sumEnc.style.color = key ? '#68d391' : '#f6ad55';
             }
         }
+        // 入力欄の伏字を一時的に解除する（打ち間違い確認用）
+        function toggleSecretVisible(inputId, btn) {
+            const el = document.getElementById(inputId);
+            if (!el) return;
+            const show = (el.type === 'password');
+            el.type = show ? 'text' : 'password';
+            if (btn) btn.classList.toggle('active', show);
+        }
+
+        async function saveAuthPassword() {
+            const input = document.getElementById('conn-auth-input');
+            const pass = input.value.trim();
+            if (!pass) return alert('合言葉を入力してください');
+            await setSetting('auth_password', pass);
+            input.value = '';
+            await updateConnectionStatus();
+            updateStatus('🗝️ 合言葉を保存', true);
+            // 通信の途中で開いていた場合は、その処理へ合言葉を返してモーダルを閉じる
+            if (authRequestResolve) {
+                const r = authRequestResolve; authRequestResolve = null;
+                document.getElementById('connSettingsModal').classList.remove('show');
+                r(pass);
+            }
+        }
+        async function clearAuthPasswordUI() {
+            if (!confirm('保存済みの合言葉をクリアしますか？\n（次にサーバーへ接続するとき、再入力を求められます）')) return;
+            await clearAuthPassword();
+            await updateConnectionStatus();
+        }
         async function saveEncKey() {
-            const input = document.getElementById('encKeyInput');
+            const input = document.getElementById('conn-enc-input');
             const key = input.value.trim();
             if (!key) return alert('暗号キーを入力してください');
             if (key.length < 4) return alert('4文字以上で設定してください');
             await setEncryptionKey(key);
-            updateEncKeyStatus();
-            alert('暗号キーを設定しました。\nアップロード時にデータが暗号化されます。');
+            input.value = '';
+            await updateConnectionStatus();
+            updateStatus('🔒 暗号キーを設定', true);
         }
         async function removeEncKey() {
             if (!confirm('暗号キーを解除しますか？\n（暗号化済みデータの読込には再設定が必要です）')) return;
             await clearEncryptionKey();
-            updateEncKeyStatus();
+            await updateConnectionStatus();
         }
 
         function updateBoardDisplay() {
@@ -341,7 +418,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             document.getElementById('cloudModal').classList.add('show');
             updateBoardDisplay();
             document.getElementById('newBoardInput').value = "";
-            updateEncKeyStatus();
+            updateConnectionStatus();
             refreshBoardList();
         }
         async function refreshBoardList() {
