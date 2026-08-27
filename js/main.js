@@ -772,6 +772,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         function updateStatus(m,s,e=false) {
             const el=document.getElementById('status-indicator'); el.textContent=m; el.className='';
             if(s) el.classList.add('saved'); if(e) el.classList.add('error');
+            // CLIモードではヘッダーごと隠れて見えないので、CLI側のトーストにも流す
+            if (window.cliOnStatus) window.cliOnStatus(m, s, e);
         }
         function createNewWindow() {
             let max=0; document.querySelectorAll('.window').forEach(w=>{ const id=parseInt(w.id.split('-')[1]); if(id>max) max=id; });

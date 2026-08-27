@@ -27,6 +27,9 @@ let cliFileListFresh = false;
 // 1回の先読みでまとめて取得する最大ファイル数（GASの実行時間に配慮した上限）
 const CLI_PREFETCH_LIMIT = 15;
 let cliImageMode = false;           // 現在開いているファイルが画像かどうか
+let cliPreviewMode = false;         // マークダウンを整形表示しているか
+let cliPreviewTimer = null;         // 整形表示の再描画を間引くためのタイマー
+let cliStatusTimer = null;          // 進捗トーストを自動で引っ込めるタイマー
 const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
 
 // =========================================
@@ -106,6 +109,15 @@ async function initCliViewer() {
 
         // 指示パッドの自動保存を初期化（localStorageから復元＋入力リスナー登録）
         cliSetupInstructionAutosave();
+
+        // 本文が変わったら整形表示も追従させる（setValueによる差し替えも拾える）
+        cliEditorInstance.on('changes', cliSchedulePreviewRender);
+
+        // 整形表示のON/OFFを復元
+        try {
+            cliPreviewMode = (localStorage.getItem('cli_preview_mode') === '1');
+        } catch (_) { cliPreviewMode = false; }
+        cliApplyPreviewMode();
     }
 
     // キャッシュから即表示 → 裏でサーバーから更新
@@ -162,6 +174,102 @@ function closeCliSidebar() {
 // =========================================
 
 // 実装は main.js の openConnectionSettings() 系に統合済み（合言葉・暗号キーの入力口は1箇所だけ）
+
+// =========================================
+// 進捗トースト
+// CLIモードではヘッダーが隠れて #status-indicator が見えないため、
+// main.js の updateStatus() からここへ流して画面上部に出す。
+// =========================================
+
+function cliOnStatus(msg, saved, isError) {
+    const el = document.getElementById('cli-status-toast');
+    if (!el || !cliViewerActive) return;
+
+    // 「Ready」は待機状態なので何も出さない
+    if (!msg || msg === 'Ready') { el.classList.remove('show'); return; }
+
+    if (cliStatusTimer) clearTimeout(cliStatusTimer);
+
+    const state = isError ? 'error' : (saved ? 'done' : 'busy');
+    const icon = (state === 'busy') ? '<span class="cli-status-spinner"></span>' : '';
+    el.className = 'cli-status-toast show ' + state;
+    el.innerHTML = icon + '<span>' + escapeHtml(msg) + '</span>';
+
+    // 完了・失敗は自動で引っ込める。処理中は出したままにする
+    if (state === 'done') cliStatusTimer = setTimeout(() => el.classList.remove('show'), 2000);
+    else if (state === 'error') cliStatusTimer = setTimeout(() => el.classList.remove('show'), 6000);
+}
+window.cliOnStatus = cliOnStatus;
+
+// =========================================
+// マークダウン整形表示
+// 閲覧中は本文と差し替え、編集中はエディタと分割表示にする
+// （PCは左右、スマホは上下に割る）
+// =========================================
+
+function toggleCliPreview() {
+    if (cliImageMode) { alert('画像ファイルは整形表示できません'); return; }
+    cliPreviewMode = !cliPreviewMode;
+    try { localStorage.setItem('cli_preview_mode', cliPreviewMode ? '1' : '0'); } catch (_) {}
+    cliApplyPreviewMode();
+}
+
+function cliApplyPreviewMode() {
+    const viewer = document.getElementById('cli-viewer');
+    if (viewer) viewer.classList.toggle('cli-preview-on', cliPreviewMode);
+    cliUpdatePreviewButton();
+
+    if (cliPreviewMode) cliRenderPreview();
+
+    // レイアウトが変わるのでCodeMirrorの座標計算をやり直す
+    if (cliEditorInstance) setTimeout(() => cliEditorInstance.refresh(), 50);
+}
+
+function cliUpdatePreviewButton() {
+    const btn = document.getElementById('cli-btn-preview');
+    if (!btn) return;
+    btn.textContent = cliPreviewMode ? '📄 原文' : '📖 整形';
+    btn.classList.toggle('btn-active', cliPreviewMode);
+    btn.title = cliPreviewMode ? 'マークダウンの原文表示に戻す' : 'マークダウンを整形して表示（表が読みやすくなります）';
+}
+
+// 連続入力で作り直し続けないよう、少し待ってから描画する
+function cliSchedulePreviewRender() {
+    if (!cliPreviewMode) return;
+    if (cliPreviewTimer) clearTimeout(cliPreviewTimer);
+    cliPreviewTimer = setTimeout(cliRenderPreview, 250);
+}
+
+function cliRenderPreview() {
+    const el = document.getElementById('cli-preview');
+    if (!el || !cliEditorInstance) return;
+
+    const md = cliEditorInstance.getValue();
+    const prevScroll = el.scrollTop;
+
+    if (typeof marked === 'undefined') {
+        // CDNが読めなかった場合は原文をそのまま出す（表示が空になるのを防ぐ）
+        el.innerHTML = '<p class="cli-preview-error">整形用ライブラリを読み込めませんでした。原文を表示します。</p>'
+            + '<pre class="cli-preview-raw">' + escapeHtml(md) + '</pre>';
+        return;
+    }
+
+    // gfm: 表やチェックリストを有効化 / breaks: 改行をそのまま改行として扱う
+    el.innerHTML = marked.parse(md, { gfm: true, breaks: true });
+
+    // 幅の広い表は、本文ごと横に伸びないよう個別にスクロールさせる
+    el.querySelectorAll('table').forEach(table => {
+        if (table.parentElement && table.parentElement.classList.contains('md-table-wrap')) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'md-table-wrap';
+        table.parentNode.insertBefore(wrap, table);
+        wrap.appendChild(table);
+    });
+
+    // 本文と同じ文字サイズに揃える
+    el.style.fontSize = cliFontSize + 'px';
+    el.scrollTop = prevScroll;
+}
 
 // =========================================
 // ファイル一覧の取得と表示
@@ -221,6 +329,9 @@ function cliTryParseImageContent(content) {
 
 function cliShowImage(imageObj) {
     cliImageMode = true;
+    // 画像表示中は整形表示を一旦畳む（設定自体は保持し、次にmdを開くと戻る）
+    const viewer = document.getElementById('cli-viewer');
+    if (viewer) viewer.classList.remove('cli-preview-on');
     const area = document.getElementById('cli-viewer-area');
     // CodeMirrorを非表示
     if (cliEditorInstance) {
@@ -240,6 +351,10 @@ function cliShowImage(imageObj) {
 
 function cliHideImage() {
     cliImageMode = false;
+    // 画像から離れたら、整形表示の設定を復帰させる
+    const viewer = document.getElementById('cli-viewer');
+    if (viewer) viewer.classList.toggle('cli-preview-on', cliPreviewMode);
+    if (cliPreviewMode) cliSchedulePreviewRender();
     const container = document.getElementById('cli-image-container');
     if (container) {
         container.style.display = 'none';
@@ -685,6 +800,8 @@ function cliChangeFontSize(delta) {
         cliEditorInstance.getWrapperElement().style.fontSize = cliFontSize + 'px';
         cliEditorInstance.refresh();
     }
+    const preview = document.getElementById('cli-preview');
+    if (preview) preview.style.fontSize = cliFontSize + 'px';
 }
 
 // =========================================
@@ -910,6 +1027,11 @@ function cliEnterEditMode(overrideOriginal = null) {
     // ビジュアルフィードバック
     document.getElementById('cli-viewer').classList.add('cli-edit-mode');
     cliUpdateEditButtons();
+    // 整形表示中は分割レイアウトへ切り替わるため、座標計算をやり直す
+    if (cliPreviewMode) {
+        cliRenderPreview();
+        setTimeout(() => cliEditorInstance.refresh(), 50);
+    }
     updateStatus('✏️ 編集モード', true);
 
     // カーソルをエディタに合わせる
@@ -934,6 +1056,7 @@ function cliExitEditMode(clearDraft = false) {
     // ビジュアルフィードバック
     document.getElementById('cli-viewer').classList.remove('cli-edit-mode');
     cliUpdateEditButtons();
+    if (cliPreviewMode) setTimeout(() => cliEditorInstance.refresh(), 50);
     updateStatus('Ready', true);
 }
 

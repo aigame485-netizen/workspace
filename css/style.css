@@ -612,6 +612,130 @@
             height: 100% !important;
         }
 
+        /* =========================================
+           マークダウン整形表示
+           閲覧中は本文と差し替え、編集中はエディタと分割表示にする
+           ========================================= */
+        .cli-preview {
+            display: none;
+            position: absolute; inset: 0;
+            overflow: auto;
+            padding: 16px 18px 60px;
+            background-color: var(--editor-bg);
+            color: var(--editor-fg);
+            font-family: var(--editor-font);
+            line-height: 1.85;
+            word-wrap: break-word;
+        }
+        #cli-viewer.cli-preview-on .cli-preview { display: block; }
+        /* 閲覧中（編集していない時）は原文エディタを隠す */
+        #cli-viewer.cli-preview-on:not(.cli-edit-mode) .cli-viewer-area .CodeMirror { display: none; }
+
+        /* 編集中は上下に分割（スマホ）。エディタが上、整形表示が下 */
+        #cli-viewer.cli-preview-on.cli-edit-mode .cli-viewer-area {
+            display: flex; flex-direction: column;
+        }
+        #cli-viewer.cli-preview-on.cli-edit-mode .cli-viewer-area .CodeMirror {
+            flex: 1 1 50%; height: auto !important; min-height: 0;
+        }
+        #cli-viewer.cli-preview-on.cli-edit-mode .cli-preview {
+            position: static; flex: 1 1 50%; min-height: 0;
+            border-top: 2px solid #4a5568;
+            padding-bottom: 16px;
+        }
+
+        /* 整形表示の中身 */
+        .cli-preview > *:first-child { margin-top: 0; }
+        .cli-preview h1, .cli-preview h2, .cli-preview h3,
+        .cli-preview h4, .cli-preview h5, .cli-preview h6 {
+            color: #90cdf4; line-height: 1.4;
+            margin: 1.6em 0 0.6em; font-weight: bold;
+        }
+        .cli-preview h1 { font-size: 1.5em; border-bottom: 2px solid #4a5568; padding-bottom: 0.3em; }
+        .cli-preview h2 { font-size: 1.3em; border-bottom: 1px solid #4a5568; padding-bottom: 0.25em; }
+        .cli-preview h3 { font-size: 1.15em; color: #63b3ed; }
+        .cli-preview h4, .cli-preview h5, .cli-preview h6 { font-size: 1em; color: #a0aec0; }
+        .cli-preview p { margin: 0.8em 0; }
+        .cli-preview ul, .cli-preview ol { margin: 0.8em 0; padding-left: 1.6em; }
+        .cli-preview li { margin: 0.3em 0; }
+        .cli-preview li::marker { color: #63b3ed; }
+        .cli-preview blockquote {
+            margin: 1em 0; padding: 0.5em 1em;
+            border-left: 4px solid #4a5568; background: rgba(255,255,255,0.03);
+            color: #cbd5e0;
+        }
+        .cli-preview blockquote p { margin: 0.3em 0; }
+        .cli-preview hr { border: none; border-top: 1px solid #4a5568; margin: 1.8em 0; }
+        .cli-preview a { color: #63b3ed; }
+        .cli-preview code {
+            background: rgba(0,0,0,0.35); color: #f6ad55;
+            padding: 0.15em 0.4em; border-radius: 3px;
+            font-family: 'Consolas', 'BIZ UDGothic', monospace; font-size: 0.9em;
+        }
+        .cli-preview pre {
+            background: rgba(0,0,0,0.35); border: 1px solid #4a5568;
+            border-radius: 4px; padding: 12px; overflow-x: auto; margin: 1em 0;
+        }
+        .cli-preview pre code { background: none; color: var(--editor-fg); padding: 0; }
+        .cli-preview img { max-width: 100%; height: auto; }
+        .cli-preview strong { color: #fff; }
+        .cli-preview em { color: #d6bcfa; }
+        .cli-preview del { color: #718096; }
+
+        /* 表：横に長いものは表だけスクロールさせ、本文は伸ばさない */
+        .md-table-wrap { overflow-x: auto; margin: 1.2em 0; border-radius: 4px; }
+        .cli-preview table {
+            border-collapse: collapse; width: auto; min-width: 100%;
+            font-size: 0.92em; line-height: 1.6;
+        }
+        .cli-preview th, .cli-preview td {
+            border: 1px solid #4a5568; padding: 7px 12px;
+            text-align: left; vertical-align: top;
+        }
+        .cli-preview th {
+            background: #2d3748; color: #90cdf4;
+            font-weight: bold; white-space: nowrap;
+        }
+        .cli-preview tbody tr:nth-child(even) { background: rgba(255,255,255,0.035); }
+        .cli-preview tbody tr:hover { background: rgba(99,179,237,0.12); }
+
+        .cli-preview-error {
+            background: #744210; border: 1px solid #d69e2e; color: #fefcbf;
+            border-radius: 4px; padding: 8px 10px; font-size: 0.85em;
+        }
+        .cli-preview-raw { white-space: pre-wrap; }
+
+        /* 整形表示の切替ボタン */
+        .btn-preview { background-color: #2c5282; }
+
+        /* =========================================
+           CLI進捗トースト（処理中／完了／失敗）
+           ========================================= */
+        .cli-status-toast {
+            position: fixed; top: -80px; left: 50%; transform: translateX(-50%);
+            display: flex; align-items: center; gap: 8px;
+            background: #2d3748; border: 1px solid #4a5568; color: #e2e8f0;
+            padding: 9px 18px; border-radius: 20px;
+            font-size: 0.85rem; font-weight: bold; z-index: 19000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: top 0.25s ease; white-space: nowrap;
+            max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
+            pointer-events: none;
+        }
+        .cli-status-toast.show { top: calc(96px + env(safe-area-inset-top, 0px)); }
+        .cli-status-toast.busy  { border-color: #d69e2e; color: #faf089; }
+        .cli-status-toast.done  { border-color: #38a169; color: #9ae6b4; }
+        .cli-status-toast.error { border-color: #e53e3e; color: #feb2b2; }
+
+        /* 処理中を示す回転リング */
+        .cli-status-spinner {
+            width: 13px; height: 13px; flex-shrink: 0;
+            border: 2px solid rgba(214,158,46,0.3);
+            border-top-color: #ecc94b; border-radius: 50%;
+            animation: cli-spin 0.7s linear infinite;
+        }
+        @keyframes cli-spin { to { transform: rotate(360deg); } }
+
         /* 画像プレビュー */
         .cli-image-container {
             display: none;
@@ -1171,6 +1295,12 @@
             }
             .cli-sidebar.open { transform: none; }
             .cli-sidebar-overlay { display: none !important; }
+
+            /* 編集中の整形表示は、横幅に余裕があるので左右に分割する */
+            #cli-viewer.cli-preview-on.cli-edit-mode .cli-viewer-area { flex-direction: row; }
+            #cli-viewer.cli-preview-on.cli-edit-mode .cli-preview {
+                border-top: none; border-left: 2px solid #4a5568;
+            }
 
             /* ☰ボタンでサイドバーを畳んだ状態（JSが pc-sidebar-hidden を付与） */
             #cli-viewer.pc-sidebar-hidden .cli-sidebar { transform: translateX(-100%); }
