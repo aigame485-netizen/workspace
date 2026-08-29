@@ -1036,6 +1036,9 @@
             font-size: 0.85rem;
         }
         .fb-search-match { background-color: rgba(99, 179, 237, 0.2); border-radius: 2px; }
+        /* パス挿入モーダルのフッター（取得時刻＋更新ボタン） */
+        .fb-footer { display: flex; align-items: center; gap: 8px; }
+        .fb-tree-meta { flex: 1; font-size: 0.7rem; color: #718096; }
 
         /* =========================================
            下書きバナー

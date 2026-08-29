@@ -1646,9 +1646,14 @@ function showCliCopyToast() {
 // フォルダツリーブラウザ
 // =========================================
 
-let fbTreeData = null;      // キャッシュしたツリーデータ
+let fbTreeData = null;      // ツリーデータ（IndexedDBに保存し、再訪時も即表示できるようにする）
 let fbTreeFlat = [];        // フラット化したリスト（検索用）
+let fbTreeFetchedAt = null; // ツリーを最後にサーバーから取得した時刻（表示用）
+let fbCacheLoaded = false;  // IndexedDBからの読み出しを試したか
 
+// パス挿入のフォルダ構造はPC側で push-tree した時にしか変わらないので、
+// モーダルを開くたびにGASへ取りに行かず、保存済みのものを即出す。
+// 取り直しはモーダル内の「🔄 更新」ボタンだけ。
 async function cliOpenFolderBrowser() {
     const modal = document.getElementById('folderBrowserModal');
     modal.classList.add('show');
@@ -1657,14 +1662,17 @@ async function cliOpenFolderBrowser() {
     const searchEl = document.getElementById('folder-browser-search');
     searchEl.value = '';
 
-    // キャッシュがあれば即表示、なければGASから取得
+    // 初回だけIndexedDBから読み出す（2回目以降はメモリ上のものをそのまま使う）
+    if (!fbTreeData && !fbCacheLoaded) await fbLoadCachedTree();
+
     if (fbTreeData) {
         fbRenderTree(fbTreeData.tree, treeEl);
-    } else {
-        treeEl.innerHTML = '<div style="text-align:center; color:#718096; padding:20px;">📡 フォルダ構造を取得中...</div>';
+        fbUpdateTreeMeta();
+        return;   // ここでは通信しない
     }
 
-    // GASから最新を取得
+    // 保存されたものが無い初回だけサーバーから取ってくる
+    treeEl.innerHTML = '<div style="text-align:center; color:#718096; padding:20px;">📡 フォルダ構造を取得中...</div>';
     await fbFetchTree();
 }
 
@@ -1672,11 +1680,53 @@ function closeFolderBrowser() {
     document.getElementById('folderBrowserModal').classList.remove('show');
 }
 
+// 保存済みのフォルダ構造を読み出す（GASには繋がない）
+async function fbLoadCachedTree() {
+    fbCacheLoaded = true;
+    try {
+        const cached = await getSetting('cli_folder_tree_cache');
+        const at = await getSetting('cli_folder_tree_cache_at');
+        if (at) fbTreeFetchedAt = parseInt(at, 10) || null;
+        if (cached) {
+            const data = JSON.parse(cached);
+            if (data && data.tree) {
+                fbTreeData = data;
+                fbTreeFlat = fbFlattenTree(fbTreeData.tree);
+                return true;
+            }
+        }
+    } catch (_) { /* 読み出し失敗は無視（サーバーから取り直せる） */ }
+    return false;
+}
+
+async function fbSaveCachedTree(data) {
+    try {
+        await setSetting('cli_folder_tree_cache', JSON.stringify(data));
+        if (fbTreeFetchedAt) {
+            await setSetting('cli_folder_tree_cache_at', String(fbTreeFetchedAt));
+        }
+    } catch (_) { /* 無視 */ }
+}
+
+// フォルダ構造をいつ取り直したかをモーダル下部に出す
+function fbUpdateTreeMeta() {
+    const el = document.getElementById('fb-tree-meta');
+    if (!el) return;
+    if (!fbTreeFetchedAt) { el.textContent = '構造: 未取得'; return; }
+    const d = new Date(fbTreeFetchedAt);
+    const sameDay = (new Date().toDateString() === d.toDateString());
+    const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    el.textContent = '構造: ' + (sameDay ? hhmm : `${d.getMonth() + 1}/${d.getDate()} ${hhmm}`) + ' 取得';
+}
+
+// 「🔄 更新」ボタン専用。ここでだけGASに繋いでフォルダ構造を取り直す
 async function fbFetchTree() {
     const pass = await getAuthPassword();
     if (!pass) return;
 
     const treeEl = document.getElementById('folder-browser-tree');
+    const btn = document.getElementById('fb-btn-refresh');
+    if (btn) { btn.disabled = true; btn.textContent = '🔄 更新中...'; }
 
     try {
         const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent('_system/folder_tree.json')}`;
@@ -1701,22 +1751,32 @@ async function fbFetchTree() {
             } catch (_) {}
 
             const newData = JSON.parse(content);
+            const unchanged = (fbTreeData && JSON.stringify(fbTreeData.tree) === JSON.stringify(newData.tree));
 
-            // キャッシュから表示済みでデータ同一なら再描画スキップ（展開状態を保持）
-            if (fbTreeData && JSON.stringify(fbTreeData.tree) === JSON.stringify(newData.tree)) {
-                fbTreeData = newData;
-                fbTreeFlat = fbFlattenTree(fbTreeData.tree);
+            fbTreeFetchedAt = Date.now();
+            fbTreeData = newData;
+            fbTreeFlat = fbFlattenTree(fbTreeData.tree);
+            await fbSaveCachedTree(fbTreeData);
+            fbUpdateTreeMeta();
+
+            // 中身が同じなら再描画しない（フォルダの展開状態を畳み直さないため）
+            if (unchanged) {
+                updateStatus('フォルダ構造は最新です', true);
                 return;
             }
 
-            fbTreeData = newData;
-            fbTreeFlat = fbFlattenTree(fbTreeData.tree);
+            // 絞り込み中に更新すると検索語と表示がずれるので、検索欄を空に戻す
+            const searchEl = document.getElementById('folder-browser-search');
+            if (searchEl) searchEl.value = '';
             fbRenderTree(fbTreeData.tree, treeEl);
+            updateStatus('フォルダ構造を更新', true);
         } else {
             treeEl.innerHTML = '<div class="fb-no-results">フォルダ構造がまだアップロードされていません<br><span style="font-size:0.75rem;">PC側で push-tree を実行してください</span></div>';
         }
     } catch (e) {
         treeEl.innerHTML = `<div class="fb-no-results">取得エラー: ${e.message}</div>`;
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 更新'; }
     }
 }
 

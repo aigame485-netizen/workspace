@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     
     <!-- ?v= はキャッシュバスター。JS/CSSを更新したらこの数字を上げること -->
-    <link rel="stylesheet" href="css/style.css?v=20260829">
+    <link rel="stylesheet" href="css/style.css?v=20260829b">
 </head>
 <body>
 
@@ -300,7 +300,9 @@
                     <div style="text-align:center; color:#718096; padding:20px;">読み込み中...</div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer fb-footer">
+                <span class="fb-tree-meta" id="fb-tree-meta">構造: 未取得</span>
+                <button class="btn-control" id="fb-btn-refresh" onclick="fbFetchTree()" title="GASに接続してフォルダ構造を取り直します">🔄 更新</button>
                 <button class="btn-control" onclick="closeFolderBrowser()">閉じる</button>
             </div>
         </div>
@@ -324,6 +326,6 @@
     <script src="js/serifu-check.js?v=20260710"></script>
 
     <!-- CLI Viewer -->
-    <script src="js/cli-viewer.js?v=20260829"></script>
+    <script src="js/cli-viewer.js?v=20260829b"></script>
 </body>
 </html>
