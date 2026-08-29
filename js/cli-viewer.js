@@ -20,9 +20,10 @@ let cliInstructionSaveTimer = null; // 指示パッドの自動保存タイマ�
 let cliPendingServerContent = null; // サーバー側の新しい内容（更新バナー表示中）
 
 // このセッションで cli_list を取り直したか。
-// 起動直後はキャッシュ由来の古い一覧が入っているため、それを根拠に
+// 起動時の一覧はキャッシュ由来（＝古い可能性がある）なので、それを根拠に
 // 「キャッシュは最新」と判断してしまうと更新を取りこぼす。取得済みの時だけ信用する。
 let cliFileListFresh = false;
+let cliFileListFetchedAt = null;   // 一覧を最後にサーバーから取得した時刻（表示用）
 
 // 1回の先読みでまとめて取得する最大ファイル数（GASの実行時間に配慮した上限）
 const CLI_PREFETCH_LIMIT = 15;
@@ -122,9 +123,13 @@ async function initCliViewer() {
         cliApplyPreviewMode();
     }
 
-    // キャッシュから即表示 → 裏でサーバーから更新
-    await cliLoadCachedFileList();
-    cliRefreshFiles();
+    // ファイル一覧はローカルキャッシュから即表示する（GASには繋がない）。
+    // フォルダ構成はめったに変わらないので、取り直しはサイドバーの「🔄 一覧を更新」だけで行う。
+    const hasCache = await cliLoadCachedFileList();
+    if (!hasCache) {
+        // 初回だけは手がかりが無いのでサーバーから取ってくる
+        cliRefreshFileList();
+    }
 }
 
 function destroyCliEditor() {
@@ -364,11 +369,15 @@ function cliRenderPreview() {
 // ファイル一覧の取得と表示
 // =========================================
 
-async function cliRefreshFiles() {
+// サイドバーの「🔄 一覧を更新」専用。
+// ここでしかファイル一覧のためにGASへ繋がない（開いているファイルの中身には触らない）。
+async function cliRefreshFileList() {
     const pass = await getAuthPassword();
     if (!pass) return;
 
     const treeEl = document.getElementById('cli-file-tree');
+    const btn = document.getElementById('cli-btn-refresh-list');
+    if (btn) { btn.disabled = true; btn.textContent = '🔄 更新中...'; }
 
     try {
         updateStatus('CLI一覧取得中...', false);
@@ -379,14 +388,11 @@ async function cliRefreshFiles() {
         if (json.status === 'success') {
             cliFileList = json.files;
             cliFileListFresh = true;
+            cliFileListFetchedAt = Date.now();
             await cliSaveFileListToCache(cliFileList);
             cliRenderFileTree(cliFileList);
+            cliUpdateListMeta();
             updateStatus('CLI一覧取得完了', true);
-
-            // 開いているファイルも最新に更新
-            if (cliCurrentFile) {
-                await cliRefreshCurrentFile();
-            }
         } else {
             if (json.message && json.message.includes("合言葉")) await clearAuthPassword();
             throw new Error(json.message);
@@ -394,7 +400,24 @@ async function cliRefreshFiles() {
     } catch (e) {
         treeEl.innerHTML = `<div style="color:#f56565; padding:10px;">エラー: ${e.message}</div>`;
         updateStatus('CLI取得失敗', false, true);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 一覧を更新'; }
     }
+}
+
+// 一覧の鮮度（最後にサーバーから取り直した時刻）をサイドバーに出す
+function cliUpdateListMeta() {
+    const el = document.getElementById('cli-list-meta');
+    if (!el) return;
+    if (!cliFileListFetchedAt) {
+        el.textContent = '一覧: 未取得';
+        return;
+    }
+    const d = new Date(cliFileListFetchedAt);
+    const sameDay = (new Date().toDateString() === d.toDateString());
+    const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const label = sameDay ? hhmm : `${d.getMonth() + 1}/${d.getDate()} ${hhmm}`;
+    el.textContent = `一覧: ${label} 取得` + (cliFileListFresh ? '' : '（保存分）');
 }
 
 // =========================================
@@ -839,6 +862,7 @@ async function cliDeleteFile(path) {
             await cliDeleteCachedFile(path);
             // ローカルのリストからも除去
             cliFileList = cliFileList.filter(f => f.path !== path);
+            await cliSaveFileListToCache(cliFileList);
             cliRenderFileTree(cliFileList);
         } else {
             throw new Error(json.message);
@@ -880,6 +904,7 @@ async function cliDeleteFolder(folderName, files) {
             const folder = f.path.split('/').slice(0, -1).join('/');
             return folder !== folderName;
         });
+        await cliSaveFileListToCache(cliFileList);
         cliRenderFileTree(cliFileList);
 
         updateStatus('削除完了', true);
@@ -909,6 +934,7 @@ async function cliDeleteAllFiles() {
             if (cliEditorInstance) cliEditorInstance.setValue('');
             document.getElementById('cli-current-filename').textContent = 'ファイルを選択';
             cliRenderFileTree([]);
+            await cliSaveFileListToCache([]);
             // キャッシュもクリア
             await cliClearAllCache();
             alert(`${json.deletedCount}件のファイルを削除しました`);
@@ -1001,24 +1027,35 @@ async function cliClearAllCache() {
     } catch (e) { /* 無視 */ }
 }
 
+// 保存済みのファイル一覧を読み出して即描画する。
+// 戻り値: 使える一覧があったか（無ければ初回とみなしてサーバーから取る）
 async function cliLoadCachedFileList() {
-    if (!db) return;
+    if (!db) return false;
     try {
         // settingsストアから前回のファイルリストを取得
         const cached = await getSetting('cli_file_list_cache');
+        const at = await getSetting('cli_file_list_cache_at');
+        if (at) cliFileListFetchedAt = parseInt(at, 10) || null;
         if (cached) {
             const files = JSON.parse(cached);
             if (files && files.length > 0) {
                 cliFileList = files;
                 cliRenderFileTree(cliFileList);
+                cliUpdateListMeta();
+                return true;
             }
         }
     } catch (e) { /* キャッシュ読み込み失敗は無視 */ }
+    cliUpdateListMeta();
+    return false;
 }
 
 async function cliSaveFileListToCache(files) {
     try {
         await setSetting('cli_file_list_cache', JSON.stringify(files));
+        if (cliFileListFetchedAt) {
+            await setSetting('cli_file_list_cache_at', String(cliFileListFetchedAt));
+        }
     } catch (e) { /* 無視 */ }
 }
 
@@ -1074,6 +1111,9 @@ async function cliEnsureGasVersion() {
  */
 async function cliPrefetchSiblings(path) {
     try {
+        // 一覧がこのセッションで未取得だと更新判定ができず、
+        // 先読みしてもキャッシュを信用できない（＝無駄打ち）ので何もしない
+        if (!cliFileListFresh) return;
         if (await cliEnsureGasVersion() < 2) return;
         if (!Array.isArray(cliFileList)) return;
 
@@ -2103,16 +2143,22 @@ function cliApplyServerUpdate() {
 }
 
 // =========================================
-// 🔄ボタンで開いているファイルの内容も更新
+// ヘッダーの🔄。開いているファイルの中身だけを取り直す
+// （ファイル一覧はサイドバーの「🔄 一覧を更新」が担当）
 // =========================================
 
 async function cliRefreshCurrentFile() {
-    if (!cliCurrentFile || !cliEditorInstance) return;
+    if (!cliEditorInstance) return;
+    if (!cliCurrentFile) {
+        updateStatus('ファイルが開かれていません', true);
+        return;
+    }
 
     const pass = await getAuthPassword();
     if (!pass) return;
 
     try {
+        updateStatus('ファイル再取得中...', false);
         const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(cliCurrentFile)}`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
@@ -2134,6 +2180,7 @@ async function cliRefreshCurrentFile() {
             const currentContent = cliEditorInstance.getValue();
             if (currentContent === content) {
                 await cliSaveFileToCache(cliCurrentFile, content, json.updatedAt);
+                updateStatus('最新版です', true);
                 return;
             }
 
@@ -2158,8 +2205,8 @@ async function cliRefreshCurrentFile() {
                 updateStatus('✅ ファイル内容を更新', true);
             }
         }
-    } catch (_) {
-        // ファイル一覧更新は成功しているので、内容取得失敗は無視
+    } catch (e) {
+        updateStatus('ファイル取得失敗', false, true);
     }
 }
 

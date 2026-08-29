@@ -568,6 +568,11 @@
             padding: 10px 15px; border-top: 1px solid #4a5568;
             flex-shrink: 0;
         }
+        /* 一覧をいつサーバーから取り直したか（キャッシュ表示中かの目印） */
+        .cli-list-meta {
+            font-size: 0.7rem; color: #718096; text-align: center;
+            margin-bottom: 8px;
+        }
 
         /* ファイルツリー */
         .cli-file-tree { padding: 10px; flex-grow: 1; overflow-y: auto; }
