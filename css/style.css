@@ -1286,6 +1286,84 @@
         }
 
         /* --- ワイド画面レイアウト（1024px以上） --- */
+        /* =========================================
+           サブ参照ペイン
+           ヘッダーの [📄メイン][📚サブ1][📚サブ2] で表示を切り替える。
+           サブは閲覧専用・整形固定で、DOMは常に残すため往復してもスクロール位置が保たれる
+           ========================================= */
+
+        /* CLIモード中はh1を隠してセグメントの横幅を稼ぐ（Canvasへは📡で戻れる） */
+        body.cli-mode header h1 { display: none; }
+
+        .cli-tabbar {
+            display: flex; gap: 4px; flex: 1; min-width: 0;
+            background: #0f1319; border: 1px solid #2d3748;
+            border-radius: 6px; padding: 3px;
+        }
+        .cli-pane-tab {
+            flex: 1; min-width: 0;
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+            background: none; border: none; border-radius: 4px;
+            color: #a0aec0; font-size: 0.8rem; padding: 5px 6px;
+            cursor: pointer; white-space: nowrap; overflow: hidden;
+        }
+        .cli-pane-tab.active { background: #2b6cb0; color: #fff; font-weight: bold; }
+        .cli-pane-tab.empty { color: #4a5568; }
+        .cli-pane-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cli-pane-tab-close {
+            flex-shrink: 0; font-size: 0.7rem; opacity: 0.7;
+            padding: 1px 4px; border-radius: 3px;
+        }
+        .cli-pane-tab-close:hover { opacity: 1; background: rgba(0,0,0,0.35); }
+
+        /* サブペイン本体 */
+        .cli-sub-pane {
+            flex-grow: 1; position: relative; overflow: hidden;
+            display: flex; flex-direction: column;
+            background-color: var(--editor-bg);
+        }
+        .cli-sub-bar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 4px 10px; background: #171923;
+            border-bottom: 1px solid #2d3748; flex-shrink: 0;
+        }
+        .cli-sub-path {
+            font-size: 0.75rem; color: #718096; flex-grow: 1;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        /* サブの整形表示は常時ON（.cli-preview の display:none / 絶対配置を打ち消す） */
+        .cli-sub-pane .cli-sub-preview {
+            display: block; position: relative; inset: auto;
+            flex: 1; min-height: 0;
+        }
+        .cli-sub-empty {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 10px;
+            color: #718096; font-size: 0.9rem; text-align: center; padding: 24px;
+            line-height: 1.7;
+        }
+        .cli-sub-empty-hint { font-size: 0.78rem; color: #4a5568; }
+
+        /* サブ表示中は、メイン専用のUIを隠す（サブは閲覧専用というのを体で分からせる） */
+        #cli-viewer.cli-sub-mode .cli-viewer-area,
+        #cli-viewer.cli-sub-mode .cli-memo-area,
+        #cli-viewer.cli-sub-mode .cli-draft-banner,
+        #cli-viewer.cli-sub-mode .cli-update-banner,
+        #cli-viewer.cli-sub-mode #cli-btn-preview,
+        #cli-viewer.cli-sub-mode #cli-btn-edit,
+        #cli-viewer.cli-sub-mode #cli-btn-save,
+        #cli-viewer.cli-sub-mode #cli-btn-refresh,
+        #cli-viewer.cli-sub-mode .btn-font,
+        #cli-viewer.cli-sub-mode #cli-charcount-badge { display: none !important; }
+
+        /* サイドバーの「今どこに読み込むか」の帯 */
+        .cli-sidebar-target {
+            padding: 6px 10px; font-size: 0.78rem; font-weight: bold;
+            background: #2c5282; color: #bee3f8;
+            border-bottom: 1px solid #4a5568; text-align: center;
+            flex-shrink: 0;
+        }
+
         @media (min-width: 1024px) {
 
             /* === CLI Viewer: サイドバー常時表示（ドッキング） === */
@@ -1316,6 +1394,11 @@
             .cli-draft-banner  { grid-column: 1; grid-row: 1; }
             .cli-update-banner { grid-column: 1; grid-row: 2; }
             .cli-viewer-area   { grid-column: 1; grid-row: 3; }
+            .cli-sub-pane      { grid-column: 1; grid-row: 3; }
+            /* PCは横幅があるので、サブを見ている間も指示パッドは出したままにする */
+            #cli-viewer.cli-sub-mode .cli-memo-area { display: flex !important; }
+            /* サブ本文もPCでは中央の読書カラムに寄せる */
+            .cli-sub-preview { padding-left: max(18px, calc(50% - 430px)); padding-right: max(18px, calc(50% - 430px)); }
             .cli-memo-area {
                 grid-column: 2; grid-row: 1 / 4;
                 border-top: none;

@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     
     <!-- ?v= はキャッシュバスター。JS/CSSを更新したらこの数字を上げること -->
-    <link rel="stylesheet" href="css/style.css?v=20260829b">
+    <link rel="stylesheet" href="css/style.css?v=20260831c">
 </head>
 <body>
 
@@ -92,6 +92,13 @@
         <button class="btn-control btn-danger" onclick="clearAllData()">🗑️</button>
         <button class="btn-control btn-cli" onclick="toggleCliViewer()">📡</button>
 
+        <!-- CLIモード専用: メイン/サブ2枠の表示切替（CLIモード中だけ出す） -->
+        <div class="cli-tabbar" id="cli-tabbar" style="display:none;">
+            <button class="cli-pane-tab active" id="cli-pane-tab-main" onclick="cliPaneTabClick(event, 'main')"></button>
+            <button class="cli-pane-tab" id="cli-pane-tab-1" onclick="cliPaneTabClick(event, 1)"></button>
+            <button class="cli-pane-tab" id="cli-pane-tab-2" onclick="cliPaneTabClick(event, 2)"></button>
+        </div>
+
         <div style="width:10px;"></div>
 
     </header>
@@ -110,7 +117,7 @@
             <button class="btn-tool btn-save" id="cli-btn-save" onclick="cliSaveFile()" style="display:none;">💾 保存</button>
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(-2)">A-</button>
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(2)">A+</button>
-            <button class="btn-tool" onclick="cliRefreshCurrentFile()" title="開いているファイルの中身を再取得（ファイル一覧は更新しません）">🔄</button>
+            <button class="btn-tool" id="cli-btn-refresh" onclick="cliRefreshCurrentFile()" title="開いているファイルの中身を再取得（ファイル一覧は更新しません）">🔄</button>
             <button class="btn-tool" onclick="openConnectionSettings()" title="合言葉・暗号キーの設定">🔐</button>
         </div>
 
@@ -119,6 +126,8 @@
                 <span>📁 CLIファイル</span>
                 <button class="btn-tool" onclick="toggleCliSidebar()">✕</button>
             </div>
+            <!-- アクティブなペインにファイルを読み込む方式なので、行き先を明示して誤爆を防ぐ -->
+            <div class="cli-sidebar-target" id="cli-sidebar-target" style="display:none;"></div>
             <div class="cli-file-tree" id="cli-file-tree">
                 <div style="text-align:center; color:#718096; padding:20px;">📡 CLIボタンで開始</div>
             </div>
@@ -147,6 +156,25 @@
                 <textarea id="cli-viewer-textarea" autocomplete="off" style="display:none;"></textarea>
                 <!-- マークダウン整形表示。編集中はエディタと分割表示になる -->
                 <div id="cli-preview" class="cli-preview"></div>
+            </div>
+
+            <!-- サブ参照ペイン（閲覧専用・整形固定）。
+                 DOMは常に残したまま display だけ切り替えるので、往復してもスクロール位置が保たれる -->
+            <div class="cli-sub-pane" id="cli-sub-pane-1" style="display:none;">
+                <div class="cli-sub-bar">
+                    <span class="cli-sub-path" id="cli-sub-path-1"></span>
+                    <button class="btn-tool" onclick="cliRefreshSub(1)" title="このサブの内容をサーバーから取り直す">🔄</button>
+                </div>
+                <div class="cli-preview cli-sub-preview" id="cli-sub-preview-1"></div>
+                <div class="cli-sub-empty" id="cli-sub-empty-1"></div>
+            </div>
+            <div class="cli-sub-pane" id="cli-sub-pane-2" style="display:none;">
+                <div class="cli-sub-bar">
+                    <span class="cli-sub-path" id="cli-sub-path-2"></span>
+                    <button class="btn-tool" onclick="cliRefreshSub(2)" title="このサブの内容をサーバーから取り直す">🔄</button>
+                </div>
+                <div class="cli-preview cli-sub-preview" id="cli-sub-preview-2"></div>
+                <div class="cli-sub-empty" id="cli-sub-empty-2"></div>
             </div>
 
             <div class="cli-memo-area" id="cli-memo-area">
@@ -326,6 +354,6 @@
     <script src="js/serifu-check.js?v=20260710"></script>
 
     <!-- CLI Viewer -->
-    <script src="js/cli-viewer.js?v=20260831b"></script>
+    <script src="js/cli-viewer.js?v=20260831c"></script>
 </body>
 </html>

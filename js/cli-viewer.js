@@ -35,6 +35,15 @@ let cliOpenFolders = new Set();     // 展開中のフォルダパス（再描�
 let cliStatusTimer = null;          // 進捗トーストを自動で引っ込めるタイマー
 const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
 
+// --- サブ参照ペイン ---
+// メイン(編集できる本文) + サブ2枠(閲覧専用)をヘッダーのタブで切り替える。
+// 3枠ともDOMを残したまま display だけ入れ替えるので、往復してもスクロール位置が保たれる。
+let cliActivePane = 'main';                    // 'main' | 1 | 2
+const cliSubPaths   = { 1: null, 2: null };    // 各サブが開いているファイルパス
+const cliSubLoaded  = { 1: false, 2: false };  // 中身を描画済みか
+const cliSubLoading = { 1: false, 2: false };  // 読み込み中か（タブ切替との二重起動よけ）
+let cliMainCursor = null;                      // メインへ戻る時に復元するカーソル位置
+
 // =========================================
 // モード切替
 // =========================================
@@ -57,20 +66,28 @@ function toggleCliViewer() {
     const header = document.querySelector('header');
     const viewer = document.getElementById('cli-viewer');
     const cliBtn = document.querySelector('.btn-cli');
+    const tabbar = document.getElementById('cli-tabbar');
+    // CLIモード中はヘッダーのh1を隠してペイン切替タブの幅を稼ぐ（CSS側で参照）
+    document.body.classList.toggle('cli-mode', cliViewerActive);
 
     if (cliViewerActive) {
         canvas.style.display = 'none';
         // ヘッダー内のCLI以外の要素を非表示（CLIモード専用表示）
+        // ※ ペイン切替タブ(#cli-tabbar)はCLIモード専用なのでここでは触らない
         Array.from(header.children).forEach(el => {
-            if (!el.classList.contains('btn-cli') && el.tagName !== 'H1') {
+            if (!el.classList.contains('btn-cli') && el.tagName !== 'H1' && el.id !== 'cli-tabbar') {
                 el.dataset.cliHidden = el.style.display || '';
                 el.style.display = 'none';
             }
         });
+        if (tabbar) tabbar.style.display = 'flex';
         viewer.style.display = 'flex';
         cliBtn.classList.add('active');
         initCliViewer();
     } else {
+        // 作業場へ戻る前にメインペインへ畳んでおく（次にCLIへ入った時の見え方を揃える）
+        cliSwitchPane('main');
+        if (tabbar) tabbar.style.display = 'none';
         // 未保存変更の確認は冒頭で済ませてある
         // 編集モードを解除（明示的に破棄→下書きも消す）
         if (cliEditMode) cliExitEditMode(true);
@@ -141,6 +158,9 @@ async function initCliViewer() {
         // 初回だけは手がかりが無いのでサーバーから取ってくる
         cliRefreshFileList();
     }
+
+    // サブ参照ペインの復元（パスだけ戻す。中身はタブを開いた時にキャッシュから読む）
+    cliRestoreSubPanes();
 }
 
 function destroyCliEditor() {
@@ -619,15 +639,20 @@ function cliCreateFolderNode(node) {
 
 function cliCreateFileItem(fileInfo) {
     const fileName = fileInfo.path.split('/').pop();
-    const isSelected = (cliCurrentFile === fileInfo.path);
+    // 「今アクティブなペインが開いているファイル」に👉を付ける（メイン/サブで指す先が変わる）
+    const isSelected = (cliActivePane === 'main')
+        ? (cliCurrentFile === fileInfo.path)
+        : (cliSubPaths[cliActivePane] === fileInfo.path);
+    // 他のサブが掴んでいるファイルは📚で見分けられるようにする
+    const inOtherSub = !isSelected && (cliSubPaths[1] === fileInfo.path || cliSubPaths[2] === fileInfo.path);
     const item = document.createElement('div');
     item.className = 'cli-file-item' + (isSelected ? ' selected' : '');
 
     const nameSpan = document.createElement('span');
     nameSpan.style.cssText = 'flex-grow:1; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
     const fileIcon = cliIsImagePath(fileInfo.path) ? '🖼️' : '📄';
-    nameSpan.textContent = (isSelected ? '👉 ' : fileIcon + ' ') + fileName;
-    nameSpan.onclick = () => cliOpenFile(fileInfo.path);
+    nameSpan.textContent = (isSelected ? '👉 ' : (inOtherSub ? '📚 ' : fileIcon + ' ')) + fileName;
+    nameSpan.onclick = () => cliHandleFileClick(fileInfo.path);
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'cli-file-delete';
@@ -2542,3 +2567,347 @@ function cliUpdateProposalsBadge() {
 }
 
 console.log("✅ CLI Viewer モジュール読み込み完了（下書き自動保存・文字数カウント・更新通知・提案ビューア対応）");
+
+// =========================================
+// サブ参照ペイン
+// シナリオ(メイン)を書きながら、セリフブレストや設定mdをチラ見するための枠。
+// ・ヘッダーの [📄メイン][📚サブ1][📚サブ2] で全画面切替（スマホ縦で3枠同時表示は無理なため）
+// ・サブは閲覧専用・整形固定。保存/編集の口はメインだけに残す
+// ・開いているパスはlocalStorageに残し、次回は「キャッシュから無通信で」復元する
+// =========================================
+
+const CLI_SUB_PATHS_KEY = 'cli_sub_paths';
+
+/** タブのクリック。✕(破棄)と本体クリックをここで振り分ける */
+function cliPaneTabClick(ev, pane) {
+    if (ev && ev.target && ev.target.classList.contains('cli-pane-tab-close')) {
+        ev.stopPropagation();
+        cliClearSub(pane);
+        return;
+    }
+    cliSwitchPane(pane);
+}
+
+/** 表示ペインの切替（'main' | 1 | 2） */
+function cliSwitchPane(pane) {
+    if (pane !== 'main' && pane !== 1 && pane !== 2) return;
+
+    // メインを離れる時はカーソル位置を覚えておく。
+    // キーボード操作だとここが飛ぶと打ち直しになるので、戻った時に必ず復元する
+    if (cliActivePane === 'main' && cliEditorInstance) {
+        try { cliMainCursor = cliEditorInstance.getCursor(); } catch (_) {}
+    }
+
+    cliActivePane = pane;
+    const viewer = document.getElementById('cli-viewer');
+    if (viewer) viewer.classList.toggle('cli-sub-mode', pane !== 'main');
+
+    [1, 2].forEach(n => {
+        const el = document.getElementById('cli-sub-pane-' + n);
+        if (el) el.style.display = (pane === n) ? 'flex' : 'none';
+    });
+
+    const nameEl = document.getElementById('cli-current-filename');
+    if (pane === 'main') {
+        if (nameEl) nameEl.textContent = cliCurrentFile || 'ファイルを選択';
+        // CodeMirrorは非表示中に幅を測れないので、戻ったら再計算してからカーソルを戻す
+        setTimeout(() => {
+            if (!cliEditorInstance) return;
+            cliEditorInstance.refresh();
+            if (cliEditMode) {
+                if (cliMainCursor) { try { cliEditorInstance.setCursor(cliMainCursor); } catch (_) {} }
+                cliEditorInstance.focus();
+            }
+        }, 30);
+    } else {
+        if (nameEl) nameEl.textContent = cliSubPaths[pane] || ('サブ' + pane + '（空）');
+        // 復元直後など、まだ中身を入れていなければここで読み込む（通信はしない）
+        if (cliSubPaths[pane] && !cliSubLoaded[pane] && !cliSubLoading[pane]) {
+            cliLoadSub(pane, cliSubPaths[pane], { allowServer: false });
+        }
+    }
+
+    cliUpdatePaneTabs();
+    cliUpdateSidebarTarget();
+    if (cliFileList && cliFileList.length) cliRenderFileTree(cliFileList);
+}
+
+/** タブの見た目を状態に合わせて描き直す */
+function cliUpdatePaneTabs() {
+    const paint = (id, label, pane, isEmpty) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const active = (cliActivePane === pane);
+        el.classList.toggle('active', active);
+        el.classList.toggle('empty', !!isEmpty);
+        let html = '<span class="cli-pane-tab-label">' + escapeHtml(label) + '</span>';
+        // ✕はアクティブなサブにだけ出す（隣のタブを誤って空にしないため）
+        if (pane !== 'main' && active && !isEmpty) {
+            html += '<span class="cli-pane-tab-close" title="このサブを空にする">✕</span>';
+        }
+        el.innerHTML = html;
+    };
+    paint('cli-pane-tab-main', '📄 メイン', 'main', false);
+    [1, 2].forEach(n => {
+        const path = cliSubPaths[n];
+        paint('cli-pane-tab-' + n, path ? '📚 ' + cliSubShortName(path) : '📚 ＋', n, !path);
+    });
+}
+
+/** タブに載せる短い名前（拡張子を落として省略） */
+function cliSubShortName(path) {
+    const name = path.split('/').pop().replace(/\.[^.]+$/, '');
+    return name.length > 8 ? name.slice(0, 8) + '…' : name;
+}
+
+/** サイドバーに「選んだファイルがどこへ入るか」を出す（アクティブペイン方式の誤爆よけ） */
+function cliUpdateSidebarTarget() {
+    const el = document.getElementById('cli-sidebar-target');
+    if (!el) return;
+    if (cliActivePane === 'main') {
+        el.style.display = 'none';
+    } else {
+        el.style.display = '';
+        el.textContent = '📚 選んだファイルは サブ' + cliActivePane + ' に読み込まれます';
+    }
+}
+
+/** サイドバーのファイルをタップした時の行き先 */
+function cliHandleFileClick(path) {
+    if (cliActivePane === 'main') {
+        cliOpenFile(path);
+    } else {
+        cliLoadSub(cliActivePane, path, { fromSidebar: true, allowServer: true });
+    }
+}
+
+/**
+ * サブにファイルを読み込む。
+ * opts.allowServer : キャッシュが古い/無い時にGASへ取りに行くか
+ * opts.forceServer : 必ず取りに行くか（🔄）
+ * opts.fromSidebar : サイドバーからの選択か（サイドバーを閉じる）
+ */
+async function cliLoadSub(slot, path, opts) {
+    opts = opts || {};
+    const allowServer = (opts.allowServer !== false);
+    const forceServer = !!opts.forceServer;
+    if (slot !== 1 && slot !== 2) return;
+
+    const changed = (cliSubPaths[slot] !== path);
+    cliSubPaths[slot] = path;
+    cliSubLoaded[slot] = false;
+    cliSubLoading[slot] = true;
+    cliSaveSubPaths();
+    cliUpdatePaneTabs();
+    cliSetSubPathLabel(slot, path, '');
+
+    if (opts.fromSidebar) closeCliSidebar();
+    if (cliActivePane !== slot) cliSwitchPane(slot);
+
+    // 別ファイルに切り替えた時と、まだ何も出ていない時だけ「読み込み中」を出す。
+    // 🔄での取り直しでは今見ている内容を消さない（読んでいる途中で真っ白になるのを防ぐ）
+    const shownEl = document.getElementById('cli-sub-preview-' + slot);
+    const hasShown = !!(shownEl && shownEl.style.display !== 'none' && shownEl.innerHTML.trim());
+    if (changed || !hasShown) cliShowSubEmpty(slot, '📚 読み込み中...');
+
+    try {
+        const cached = await cliGetCachedFile(path);
+
+        // まずキャッシュで即表示（サブは閲覧専用なので、古くても表示を止める理由がない）
+        if (cached && !forceServer) {
+            cliRenderSub(slot, cached.content);
+            cliSubLoaded[slot] = true;
+            const fresh = cliIsCacheFresh(path, cached);
+            cliSetSubPathLabel(slot, path, fresh ? '' : '（保存分）');
+            // 世代が確認できていて最新なら、ここで確定（通信ゼロ）
+            if (fresh || !allowServer) { cliSubLoading[slot] = false; return; }
+        } else if (!cached && !allowServer && !forceServer) {
+            // 起動時の復元でキャッシュが無かった場合は、取りに行かず取得ボタンを出す
+            cliShowSubEmpty(slot,
+                '📚 保存分がありません<br><span class="cli-sub-empty-hint">' + escapeHtml(path) + '</span>',
+                slot);
+            cliSubLoading[slot] = false;
+            return;
+        }
+
+        // サーバーから取り直して差し替える（サブは編集しないので衝突の心配がなく、黙って更新してよい）
+        const got = await cliFetchSubContent(path);
+        if (got) {
+            cliRenderSub(slot, got.content);
+            cliSubLoaded[slot] = true;
+            cliSetSubPathLabel(slot, path, '');
+            if (got.cacheable) await cliSaveFileToCache(path, got.content, got.updatedAt);
+            updateStatus('📚 サブ' + slot + ' 取得完了', true);
+        } else if (!cliSubLoaded[slot]) {
+            cliShowSubEmpty(slot, '📚 取得できませんでした', slot);
+        }
+    } catch (e) {
+        if (!cliSubLoaded[slot]) {
+            cliShowSubEmpty(slot, '📚 取得失敗<br><span class="cli-sub-empty-hint">' + escapeHtml(e.message || '') + '</span>', slot);
+        }
+        updateStatus('サブ取得失敗', false, true);
+    } finally {
+        cliSubLoading[slot] = false;
+    }
+}
+
+/** サブの🔄（このサブだけサーバーから取り直す） */
+function cliRefreshSub(slot) {
+    const path = cliSubPaths[slot];
+    if (!path) return;
+    cliLoadSub(slot, path, { forceServer: true, allowServer: true });
+}
+
+/** サブ用のファイル取得（暗号化されていれば復号する。cliOpenFileと同じ手順） */
+async function cliFetchSubContent(path) {
+    const pass = await getAuthPassword();
+    if (!pass) return null;
+
+    updateStatus('📚 サブ取得中...', false);
+    const url = GAS_API_URL + '?auth=' + encodeURIComponent(pass)
+        + '&action=cli_download&path=' + encodeURIComponent(path);
+    const res = await fetch(url, { method: 'POST' });
+    const json = await res.json();
+    if (json.status !== 'success') throw new Error(json.message || '取得に失敗しました');
+
+    let content = json.content;
+    let cacheable = true;
+    try {
+        const parsed = JSON.parse(content);
+        if (parsed && parsed.encrypted) {
+            const encKey = await getEncryptionKey();
+            if (!encKey) {
+                content = '[暗号化データ] 暗号キーを設定してください';
+                cacheable = false;
+            } else {
+                try {
+                    content = await decryptData(parsed, encKey);
+                } catch (decErr) {
+                    content = '[復号失敗] 暗号キーが正しいか確認してください';
+                    cacheable = false;
+                }
+            }
+        }
+    } catch (_) { /* JSONでなければ平文としてそのまま使う */ }
+
+    return { content: content, updatedAt: json.updatedAt, cacheable: cacheable };
+}
+
+/** サブの中身を整形表示に流し込む（サブは常に整形。原文表示は持たない） */
+function cliRenderSub(slot, text) {
+    const el = document.getElementById('cli-sub-preview-' + slot);
+    const empty = document.getElementById('cli-sub-empty-' + slot);
+    if (!el) return;
+    if (empty) { empty.style.display = 'none'; empty.innerHTML = ''; }
+    el.style.display = '';
+
+    // 画像が入っていたらそのまま出す
+    const imageObj = cliTryParseImageContent(text);
+    if (imageObj) {
+        el.innerHTML = '<img src="data:' + imageObj.mimeType + ';base64,' + imageObj.data
+            + '" alt="" class="cli-image-preview">';
+        el.scrollTop = 0;
+        return;
+    }
+
+    if (typeof marked === 'undefined') {
+        // CDNが読めなかった場合は原文をそのまま出す（表示が空になるのを防ぐ）
+        el.innerHTML = '<p class="cli-preview-error">整形用ライブラリを読み込めませんでした。原文を表示します。</p>'
+            + '<pre class="cli-preview-raw">' + escapeHtml(text) + '</pre>';
+        el.scrollTop = 0;
+        return;
+    }
+
+    el.innerHTML = marked.parse(text, { gfm: true, breaks: true });
+
+    // 幅の広い表は、本文ごと横に伸びないよう個別にスクロールさせる
+    el.querySelectorAll('table').forEach(table => {
+        if (table.parentElement && table.parentElement.classList.contains('md-table-wrap')) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'md-table-wrap';
+        table.parentNode.insertBefore(wrap, table);
+        wrap.appendChild(table);
+    });
+
+    // 文字サイズはメインの設定に追従させる（サブ側に調整UIは置かない）
+    el.style.fontSize = cliFontSize + 'px';
+    el.scrollTop = 0;
+}
+
+/** サブの空表示（withRefreshSlotを渡すと🔄取得ボタンを添える） */
+function cliShowSubEmpty(slot, html, withRefreshSlot) {
+    const el = document.getElementById('cli-sub-preview-' + slot);
+    const empty = document.getElementById('cli-sub-empty-' + slot);
+    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+    if (!empty) return;
+    empty.style.display = 'flex';
+    empty.innerHTML = '<div>' + html + '</div>'
+        + (withRefreshSlot
+            ? '<button class="btn-control" onclick="cliRefreshSub(' + withRefreshSlot + ')">🔄 取得</button>'
+            : '');
+}
+
+/** サブの空タブ用の案内 */
+function cliShowSubPlaceholder(slot) {
+    cliShowSubEmpty(slot,
+        '📚 サブ' + slot + ' は空です<br><span class="cli-sub-empty-hint">☰ からファイルを選ぶと、ここに読み込まれます</span>');
+}
+
+/** サブ上部のパス表示（（保存分）＝このセッションではサーバー確認していない） */
+function cliSetSubPathLabel(slot, path, suffix) {
+    const el = document.getElementById('cli-sub-path-' + slot);
+    if (el) el.textContent = (path || '') + (suffix || '');
+}
+
+/** サブを空に戻す（✕。確認は挟まない＝すぐ捨てられるように） */
+function cliClearSub(slot) {
+    cliSubPaths[slot] = null;
+    cliSubLoaded[slot] = false;
+    cliSubLoading[slot] = false;
+    cliSaveSubPaths();
+    cliSetSubPathLabel(slot, '', '');
+    cliShowSubPlaceholder(slot);
+    cliUpdatePaneTabs();
+    const nameEl = document.getElementById('cli-current-filename');
+    if (cliActivePane === slot && nameEl) nameEl.textContent = 'サブ' + slot + '（空）';
+    if (cliFileList && cliFileList.length) cliRenderFileTree(cliFileList);
+}
+
+function cliSaveSubPaths() {
+    try {
+        localStorage.setItem(CLI_SUB_PATHS_KEY, JSON.stringify([cliSubPaths[1], cliSubPaths[2]]));
+    } catch (_) {}
+}
+
+/** 起動時の復元。パスだけ戻し、中身はタブを開いた時にキャッシュから読む（ここでは通信しない） */
+function cliRestoreSubPanes() {
+    try {
+        const arr = JSON.parse(localStorage.getItem(CLI_SUB_PATHS_KEY) || '[]');
+        cliSubPaths[1] = arr[0] || null;
+        cliSubPaths[2] = arr[1] || null;
+    } catch (_) {
+        cliSubPaths[1] = null;
+        cliSubPaths[2] = null;
+    }
+    [1, 2].forEach(n => {
+        cliSubLoaded[n] = false;
+        cliSubLoading[n] = false;
+        cliSetSubPathLabel(n, cliSubPaths[n] || '', cliSubPaths[n] ? '（未読込）' : '');
+        if (!cliSubPaths[n]) cliShowSubPlaceholder(n);
+    });
+    cliUpdatePaneTabs();
+    cliUpdateSidebarTarget();
+}
+
+// --- キーボード操作（Androidに繋いだキーボード/マウス向け） ---
+// Ctrl+数字はブラウザのタブ切替に取られるので Alt+1/2/3 を使う
+document.addEventListener('keydown', (e) => {
+    if (!cliViewerActive) return;
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    const map = { '1': 'main', '2': 1, '3': 2, 'Digit1': 'main', 'Digit2': 1, 'Digit3': 2 };
+    let target = map[e.key];
+    if (target === undefined) target = map[e.code];
+    if (target === undefined) return;
+    e.preventDefault();
+    cliSwitchPane(target);
+});
