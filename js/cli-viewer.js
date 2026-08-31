@@ -43,7 +43,16 @@ const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
 window.cliIsActive = () => cliViewerActive;
 
 function toggleCliViewer() {
-    cliViewerActive = !cliViewerActive;
+    const turningOn = !cliViewerActive;
+
+    // CLIから作業場へ戻る時の未保存確認は、状態を切り替える「前」に行う。
+    // 先に cliViewerActive を反転してしまうと、キャンセルしたのに画面はCLIのまま
+    // フラグだけOFFになり、進捗トーストが出なくなる／📡が初期化からやり直しになる
+    if (!turningOn && cliHasUnsavedChanges) {
+        if (!confirm('未保存の変更があります。破棄して戻りますか？')) return;
+    }
+
+    cliViewerActive = turningOn;
     const canvas = document.getElementById('canvas');
     const header = document.querySelector('header');
     const viewer = document.getElementById('cli-viewer');
@@ -62,10 +71,7 @@ function toggleCliViewer() {
         cliBtn.classList.add('active');
         initCliViewer();
     } else {
-        // 未保存変更の確認
-        if (cliHasUnsavedChanges) {
-            if (!confirm('未保存の変更があります。破棄して戻りますか？')) return;
-        }
+        // 未保存変更の確認は冒頭で済ませてある
         // 編集モードを解除（明示的に破棄→下書きも消す）
         if (cliEditMode) cliExitEditMode(true);
         cliHideImage();
