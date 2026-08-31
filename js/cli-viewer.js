@@ -2904,10 +2904,64 @@ function cliRestoreSubPanes() {
 document.addEventListener('keydown', (e) => {
     if (!cliViewerActive) return;
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
-    const map = { '1': 'main', '2': 1, '3': 2, 'Digit1': 'main', 'Digit2': 1, 'Digit3': 2 };
+    // Androidや配列によってはAlt併用で e.key が記号/'Dead' になるので、
+    // レイアウト非依存の e.code（Digit/Numpad）を必ずフォールバックに用意しておく
+    const map = {
+        '1': 'main', '2': 1, '3': 2,
+        'Digit1': 'main', 'Digit2': 1, 'Digit3': 2,
+        'Numpad1': 'main', 'Numpad2': 1, 'Numpad3': 2
+    };
     let target = map[e.key];
     if (target === undefined) target = map[e.code];
     if (target === undefined) return;
     e.preventDefault();
     cliSwitchPane(target);
 });
+
+// --- Ctrl+S（Macは⌘+S）で保存 ---
+// ブラウザの「ページを保存」ダイアログは常に止める（Androidの外付けキーボードで誤爆しやすいため）
+// capture:true ＝ CodeMirrorやtextareaに食われる前に拾う
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 's' && e.key !== 'S' && e.code !== 'KeyS') return;
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.altKey) return;   // Ctrl+Alt+S は別用途に空けておく
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!cliViewerActive) {
+        // Canvas側：全ウィンドウを手動保存
+        if (typeof manualSaveAll === 'function') manualSaveAll();
+        return;
+    }
+    cliQuickSave();
+}, true);
+
+/**
+ * CLIビューアでのCtrl+S。保存できるのは「メインペインで編集中の本文」だけなので、
+ * それ以外の状況では何が足りないかをトーストで返す（黙って無反応にしない）
+ */
+function cliQuickSave() {
+    if (cliActivePane !== 'main') { updateStatus('📄 保存できるのはメインの本文だけです', true); return; }
+    if (!cliCurrentFile)         { updateStatus('先にファイルを開いてください', true); return; }
+    if (cliImageMode)            { updateStatus('画像ファイルは保存できません', true); return; }
+    if (!cliEditMode)            { updateStatus('📝 編集モードにすると保存できます', true); return; }
+    if (!cliHasUnsavedChanges)   { updateStatus('変更はありません', true); return; }
+    cliSaveFile();
+}
+
+// --- Ctrl+E で編集モード切替 ---
+// メインペイン専用。ブラウザ既定（Chromeのアドレスバー検索など）は潰す
+document.addEventListener('keydown', (e) => {
+    if (!cliViewerActive) return;
+    if (e.key !== 'e' && e.key !== 'E' && e.code !== 'KeyE') return;
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.altKey || e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (cliActivePane !== 'main') { updateStatus('📄 編集できるのはメインの本文だけです', true); return; }
+    if (!cliCurrentFile) { updateStatus('先にファイルを開いてください', true); return; }
+    if (cliImageMode) { updateStatus('画像ファイルは編集できません', true); return; }
+    // 未保存確認・整形表示からの復帰は toggleCliEditMode() 側が面倒を見てくれる
+    toggleCliEditMode();
+}, true);

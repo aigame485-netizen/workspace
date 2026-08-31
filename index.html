@@ -94,9 +94,9 @@
 
         <!-- CLIモード専用: メイン/サブ2枠の表示切替（CLIモード中だけ出す） -->
         <div class="cli-tabbar" id="cli-tabbar" style="display:none;">
-            <button class="cli-pane-tab active" id="cli-pane-tab-main" onclick="cliPaneTabClick(event, 'main')"></button>
-            <button class="cli-pane-tab" id="cli-pane-tab-1" onclick="cliPaneTabClick(event, 1)"></button>
-            <button class="cli-pane-tab" id="cli-pane-tab-2" onclick="cliPaneTabClick(event, 2)"></button>
+            <button class="cli-pane-tab active" id="cli-pane-tab-main" title="メイン（Alt+1）" onclick="cliPaneTabClick(event, 'main')"></button>
+            <button class="cli-pane-tab" id="cli-pane-tab-1" title="サブ1（Alt+2）" onclick="cliPaneTabClick(event, 1)"></button>
+            <button class="cli-pane-tab" id="cli-pane-tab-2" title="サブ2（Alt+3）" onclick="cliPaneTabClick(event, 2)"></button>
         </div>
 
         <div style="width:10px;"></div>
@@ -113,8 +113,8 @@
             <button class="cli-charcount-badge" id="cli-charcount-badge" onclick="cliShowCharCountDetail()" title="文字数詳細" style="display:none;">—</button>
             <div style="flex-grow:1;"></div>
             <button class="btn-tool btn-preview" id="cli-btn-preview" onclick="toggleCliPreview()" title="マークダウンを整形して表示（表が読みやすくなります）">📖 整形</button>
-            <button class="btn-tool btn-edit" id="cli-btn-edit" onclick="toggleCliEditMode()">📝 編集</button>
-            <button class="btn-tool btn-save" id="cli-btn-save" onclick="cliSaveFile()" style="display:none;">💾 保存</button>
+            <button class="btn-tool btn-edit" id="cli-btn-edit" title="編集モード切替（Ctrl+E）" onclick="toggleCliEditMode()">📝 編集</button>
+            <button class="btn-tool btn-save" id="cli-btn-save" title="保存（Ctrl+S）" onclick="cliSaveFile()" style="display:none;">💾 保存</button>
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(-2)">A-</button>
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(2)">A+</button>
             <button class="btn-tool" id="cli-btn-refresh" onclick="cliRefreshCurrentFile()" title="開いているファイルの中身を再取得（ファイル一覧は更新しません）">🔄</button>
@@ -354,6 +354,6 @@
     <script src="js/serifu-check.js?v=20260710"></script>
 
     <!-- CLI Viewer -->
-    <script src="js/cli-viewer.js?v=20260831c"></script>
+    <script src="js/cli-viewer.js?v=20260901b"></script>
 </body>
 </html>
