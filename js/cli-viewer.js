@@ -1445,8 +1445,9 @@ async function cliCopyInstruction() {
     const textarea = document.getElementById('cli-instruction-content');
     const text = textarea.value.trim();
 
+    // キーボード（Ctrl+Enter）からも呼ばれるので、空の時はダイアログではなくトーストで返す
     if (!text) {
-        alert('コピーする内容がありません');
+        updateStatus('📋 指示パッドが空です', true);
         return;
     }
 
@@ -1534,7 +1535,7 @@ function cliInsertIntoInstruction(text) {
 // --- 今開いているファイルのパスを挿入 ---
 function cliInsertCurrentPath() {
     if (!cliCurrentFile) {
-        alert('開いているファイルがありません。先にファイルを選択してください。');
+        updateStatus('先にファイルを開いてください', true);
         return;
     }
     cliInsertIntoInstruction(cliCurrentFile);
@@ -2975,6 +2976,162 @@ document.addEventListener('keydown', (e) => {
     if (cliImageMode) { updateStatus('画像ファイルは編集できません', true); return; }
     // 未保存確認・整形表示からの復帰は toggleCliEditMode() 側が面倒を見てくれる
     toggleCliEditMode();
+}, true);
+
+// =========================================
+// 指示パッドのキーボード操作（Androidに繋いだキーボード/マウス向け）
+//   Ctrl+I     … 指示パッドを開いて入力窓にフォーカス（もう一度押すと本文へ戻る）
+//   Ctrl+P     … 今開いているファイルのパスを指示パッドへ挿入（ブラウザの印刷は封じる）
+//   Ctrl+Enter … 指示パッドの内容をコピー
+//                （Ctrl+C は本文のテキスト選択コピーと被るので使わない）
+//   Esc        … 指示パッドから本文へ戻る
+//   Ctrl+/ , F1 … ショートカット一覧
+// Ctrl+Shift+◯ はブラウザ側（Ctrl+Shift+I=開発者ツール等）に譲るので拾わない
+// =========================================
+
+/** 指示パッドの入力窓 */
+function cliInstructionEl() {
+    return document.getElementById('cli-instruction-content');
+}
+
+/** 今フォーカスが指示パッドの入力窓にあるか */
+function cliIsInstructionFocused() {
+    const ta = cliInstructionEl();
+    return !!ta && document.activeElement === ta;
+}
+
+/**
+ * 指示パッドを「入力できる状態」にして開く。
+ * タブ切替・折りたたみ解除・（スマホなら）サブからの復帰とサイドバー畳みまで面倒を見る。
+ * @param {{toEnd?:boolean, after?:function}} opts
+ *   toEnd … カーソルを末尾へ置く（続きを書き足す用）
+ *   after … フォーカスが入った後にやること（パス挿入など）
+ * @returns {boolean} 開けたか
+ */
+function cliOpenInstructionPad(opts = {}) {
+    if (!cliViewerActive) return false;
+    const ta = cliInstructionEl();
+    if (!ta) return false;
+
+    // スマホ幅ではサブ表示中に指示パッドがCSSで隠れる（.cli-sub-mode）ので、メインへ戻してから開く。
+    // PCは右パネルなのでサブを見たまま書ける
+    const needPaneSwitch = (cliActivePane !== 'main' && !cliIsPcLayout());
+    if (needPaneSwitch) cliSwitchPane('main');
+    // スマホのサイドバーは入力窓に被さるので畳む（PCは常時表示なので触らない）
+    if (!cliIsPcLayout()) closeCliSidebar();
+
+    cliSwitchTab('instruction');
+    if (!cliMemoExpanded) toggleCliMemoExpand();
+
+    const finish = () => {
+        if (opts.toEnd) {
+            const n = ta.value.length;
+            try { ta.setSelectionRange(n, n); } catch (_) {}
+        }
+        ta.focus();
+        if (typeof opts.after === 'function') opts.after(ta);
+    };
+    // cliSwitchPane('main') は30ms後にCodeMirrorへフォーカスを戻すので、その後に入力窓を取る
+    if (needPaneSwitch) setTimeout(finish, 60);
+    else finish();
+    return true;
+}
+
+/** 指示パッドから本文へ戻る（編集中ならカーソルもエディタへ返す） */
+function cliLeaveInstructionPad() {
+    const ta = cliInstructionEl();
+    if (ta) ta.blur();
+    if (cliEditorInstance && cliActivePane === 'main' && cliEditMode) {
+        cliEditorInstance.focus();
+    }
+}
+
+/** Ctrl+P。指示パッドを開いてから現在パスを挿入する（未フォーカスならカーソルは先頭＝メモの頭に付く） */
+function cliInsertCurrentPathFromKey() {
+    if (!cliCurrentFile) { updateStatus('先にファイルを開いてください', true); return; }
+    cliOpenInstructionPad({
+        after: () => {
+            cliInsertIntoInstruction(cliCurrentFile);
+            fbShowInsertToast(cliCurrentFile);
+        }
+    });
+}
+
+// ショートカット一覧（⌨ボタン / Ctrl+/ / F1）
+const CLI_SHORTCUT_HELP = [
+    '⌨ キーボードショートカット（CLIビューア）',
+    '',
+    '【表示】',
+    '  Alt+1 / Alt+2 / Alt+3 … メイン / サブ1 / サブ2 を切替',
+    '',
+    '【本文】',
+    '  Ctrl+E … 編集モードの切替（メインのみ）',
+    '  Ctrl+S … 保存（メインで編集中のみ）',
+    '',
+    '【指示パッド】',
+    '  Ctrl+I … 指示パッドを開いて入力窓へ（もう一度押すと本文へ戻る）',
+    '  Ctrl+P … 今開いているファイルのパスを挿入',
+    '  Ctrl+Enter … 内容をクリップボードにコピー',
+    '  Esc … 入力窓から本文へ戻る',
+    '',
+    '※ Ctrl+C は本文のテキスト選択コピーに使うため、',
+    '　 指示パッドのコピーは Ctrl+Enter に割り当てています'
+].join('\n');
+
+function cliShowShortcutHelp() {
+    alert(CLI_SHORTCUT_HELP);
+}
+
+document.addEventListener('keydown', (e) => {
+    if (!cliViewerActive) return;
+
+    // --- 修飾キーなし ---
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === 'F1' || e.code === 'F1') {
+            e.preventDefault();
+            cliShowShortcutHelp();
+            return;
+        }
+        // Escは入力窓にいる時だけ拾う（モーダルのEsc等を邪魔しない）
+        if (e.key === 'Escape' && cliIsInstructionFocused()) {
+            e.preventDefault();
+            cliLeaveInstructionPad();
+        }
+        return;
+    }
+
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.altKey) return;    // Ctrl+Alt+◯ は将来用に素通し
+    if (e.shiftKey) return;  // Ctrl+Shift+◯ はブラウザ既定に譲る
+
+    // --- Ctrl+/ : ショートカット一覧 ---
+    if (e.key === '/' || e.code === 'Slash') {
+        e.preventDefault(); e.stopPropagation();
+        cliShowShortcutHelp();
+        return;
+    }
+
+    // --- Ctrl+I : 指示パッドを開く / 本文へ戻る ---
+    if (e.key === 'i' || e.key === 'I' || e.code === 'KeyI') {
+        e.preventDefault(); e.stopPropagation();
+        if (cliIsInstructionFocused()) cliLeaveInstructionPad();
+        else cliOpenInstructionPad({ toEnd: true });
+        return;
+    }
+
+    // --- Ctrl+P : 現パス挿入（ブラウザの印刷ダイアログは潰す） ---
+    if (e.key === 'p' || e.key === 'P' || e.code === 'KeyP') {
+        e.preventDefault(); e.stopPropagation();
+        cliInsertCurrentPathFromKey();
+        return;
+    }
+
+    // --- Ctrl+Enter : 指示パッドをコピー ---
+    if (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter') {
+        e.preventDefault(); e.stopPropagation();
+        cliCopyInstruction();
+        return;
+    }
 }, true);
 
 // =========================================
