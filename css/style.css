@@ -1331,6 +1331,14 @@
             font-size: 0.75rem; color: #718096; flex-grow: 1;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
+        /* 使用済みセリフの塗り分けトグル（🖍）。ONは黄系でCanvasの👑と揃える */
+        .cli-sub-bar .btn-serifu.btn-active { background-color: #b7791f; color: #fff; }
+        /* サブ本文の「使用済み」ハイライト。Canvas側の .cm-used-serifu と同じ見た目 */
+        .cli-used-serifu {
+            background-color: rgba(236, 201, 75, 0.28);
+            border-bottom: 1px dashed #ecc94b;
+            border-radius: 2px;
+        }
         /* サブの整形表示は常時ON（.cli-preview の display:none / 絶対配置を打ち消す） */
         .cli-sub-pane .cli-sub-preview {
             display: block; position: relative; inset: auto;

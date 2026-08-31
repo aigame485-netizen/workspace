@@ -161,6 +161,9 @@ async function initCliViewer() {
 
     // サブ参照ペインの復元（パスだけ戻す。中身はタブを開いた時にキャッシュから読む）
     cliRestoreSubPanes();
+
+    // 使用済みセリフ塗り分けのON/OFF復元
+    cliInitSerifuCheck();
 }
 
 function destroyCliEditor() {
@@ -2577,6 +2580,7 @@ console.log("✅ CLI Viewer モジュール読み込み完了（下書き自動�
 // =========================================
 
 const CLI_SUB_PATHS_KEY = 'cli_sub_paths';
+const CLI_SERIFU_KEY = 'cli_serifu_check';   // 使用済みセリフ塗り分けのON/OFF
 
 /** タブのクリック。✕(破棄)と本体クリックをここで振り分ける */
 function cliPaneTabClick(ev, pane) {
@@ -2624,6 +2628,10 @@ function cliSwitchPane(pane) {
         // 復元直後など、まだ中身を入れていなければここで読み込む（通信はしない）
         if (cliSubPaths[pane] && !cliSubLoaded[pane] && !cliSubLoading[pane]) {
             cliLoadSub(pane, cliSubPaths[pane], { allowServer: false });
+        } else if (cliSubLoaded[pane]) {
+            // 表示済みのサブは、前に見た後でメイン本文が進んでいる可能性があるので塗り直す
+            // （メイン編集中はサブが隠れているので、戻ってきたこの瞬間に追いつかせる）
+            cliApplyUsedSerifu(pane);
         }
     }
 
@@ -2832,6 +2840,9 @@ function cliRenderSub(slot, text) {
     // 文字サイズはメインの設定に追従させる（サブ側に調整UIは置かない）
     el.style.fontSize = cliFontSize + 'px';
     el.scrollTop = 0;
+
+    // メインで採用済みのセリフを塗る（重複採用よけ）
+    cliApplyUsedSerifu(slot);
 }
 
 /** サブの空表示（withRefreshSlotを渡すと🔄取得ボタンを添える） */
@@ -2965,3 +2976,146 @@ document.addEventListener('keydown', (e) => {
     // 未保存確認・整形表示からの復帰は toggleCliEditMode() 側が面倒を見てくれる
     toggleCliEditMode();
 }, true);
+
+// =========================================
+// セリフ使用済みチェッカー（CLI版）
+// メインペインの本文を「採用済み」の台本とみなし、サブペイン（セリフブレスト等）に
+// 出ている「」内セリフのうち、すでに採用済みのものを塗る。
+// Canvas版（serifu-check.js）と同じ正規化・レーベンシュタイン判定・一致率設定を共有し、
+// 判定ロジックは二重に持たない。違いは塗る対象で、
+//   Canvas版 … CodeMirrorの markText
+//   CLI版    … サブは「閲覧専用・整形固定」なので marked が吐いたDOMを直接包む
+// =========================================
+
+let cliSerifuCheckOn = true;   // 既定ON（重複採用に気づけないのが元々の困りごとなので）
+
+// 塗り分けから除外するタグ（コードブロック内の「」は台詞ではない）
+const CLI_SERIFU_SKIP_TAGS = ['CODE', 'PRE', 'SCRIPT', 'STYLE', 'TEXTAREA'];
+
+/** serifu-check.js が読めているか（CDN失敗や読み込み順の事故で落とさない） */
+function cliSerifuReady() {
+    return typeof extractQuotes === 'function'
+        && typeof normalizeSerifu === 'function'
+        && typeof findUsedMatch === 'function';
+}
+
+/** メイン本文の「」セリフ一覧（正規化・重複除去済み）＝採用済みリスト */
+function cliMainQuoteSet() {
+    if (!cliSerifuReady() || !cliEditorInstance) return [];
+    if (cliImageMode) return [];
+    const quotes = extractQuotes(cliEditorInstance.getValue()).map(q => normalizeSerifu(q.raw));
+    return [...new Set(quotes)].filter(q => q.length > 0);
+}
+
+/** 付けた印を外して元のテキストへ戻す（normalize()で分割されたテキストノードを繋ぎ直す） */
+function cliClearUsedSerifuMarks(root) {
+    if (!root) return;
+    root.querySelectorAll('span.cli-used-serifu').forEach(span => {
+        const parent = span.parentNode;
+        if (!parent) return;
+        parent.replaceChild(document.createTextNode(span.textContent), span);
+        parent.normalize();
+    });
+}
+
+/**
+ * root配下のテキストノードを走査し、採用済みセリフを span で包む
+ * @returns {number} 塗った件数
+ */
+function cliMarkUsedSerifu(root, mainQuotes) {
+    cliClearUsedSerifuMarks(root);
+    if (!root || !cliSerifuReady() || !mainQuotes || !mainQuotes.length) return 0;
+
+    // 走査しながらDOMを差し替えるとTreeWalkerが壊れるので、対象を先に集めきる
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            if (!node.nodeValue || node.nodeValue.indexOf('「') === -1) return NodeFilter.FILTER_REJECT;
+            for (let el = node.parentNode; el && el !== root; el = el.parentNode) {
+                if (CLI_SERIFU_SKIP_TAGS.indexOf(el.nodeName) !== -1) return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+        }
+    });
+    const targets = [];
+    let node;
+    while ((node = walker.nextNode())) targets.push(node);
+
+    let count = 0;
+    for (const tn of targets) {
+        const text = tn.nodeValue;
+        const frag = document.createDocumentFragment();
+        let cursor = 0;
+        for (const q of extractQuotes(text)) {
+            const sim = findUsedMatch(normalizeSerifu(q.raw), mainQuotes);
+            if (sim === null) continue;
+            if (q.start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, q.start)));
+            const span = document.createElement('span');
+            span.className = 'cli-used-serifu';
+            span.title = '使用済み？（一致率 ' + sim + '%）';
+            span.textContent = text.slice(q.start, q.end);
+            frag.appendChild(span);
+            cursor = q.end;
+            count++;
+        }
+        if (cursor === 0) continue;   // このノードでは1件も当たらなかった
+        if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
+        tn.parentNode.replaceChild(frag, tn);
+    }
+    return count;
+}
+
+/** サブ1枚に照合結果を反映（mainQuotesを渡さなければその場で作る） */
+function cliApplyUsedSerifu(slot, mainQuotes) {
+    const el = document.getElementById('cli-sub-preview-' + slot);
+    if (!el) return 0;
+    if (!cliSerifuCheckOn) { cliClearUsedSerifuMarks(el); return 0; }
+    return cliMarkUsedSerifu(el, mainQuotes || cliMainQuoteSet());
+}
+
+/** サブ2枚とも塗り直す。メイン本文が変わった後・ON/OFF切替・一致率変更から呼ぶ */
+function cliRefreshSerifuMarks() {
+    const mainQuotes = cliSerifuCheckOn ? cliMainQuoteSet() : [];
+    let total = 0;
+    [1, 2].forEach(n => { total += cliApplyUsedSerifu(n, mainQuotes); });
+    return total;
+}
+window.cliRefreshSerifuMarks = cliRefreshSerifuMarks;
+
+/** サブ上部バーの🖍ボタン。ON/OFFは端末ごとにlocalStorageで覚える */
+function cliToggleSerifuCheck() {
+    cliSerifuCheckOn = !cliSerifuCheckOn;
+    try { localStorage.setItem(CLI_SERIFU_KEY, cliSerifuCheckOn ? '1' : '0'); } catch (_) {}
+    cliUpdateSerifuButtons();
+    const n = cliRefreshSerifuMarks();
+    if (!cliSerifuCheckOn) {
+        updateStatus('🖍 使用済みチェック OFF', true);
+    } else if (!cliCurrentFile) {
+        updateStatus('🖍 メインにファイルを開くと照合します', true);
+    } else {
+        updateStatus('🖍 使用済み ' + n + '件（メイン: ' + cliShortName(cliCurrentFile) + '）', true);
+    }
+}
+
+function cliUpdateSerifuButtons() {
+    [1, 2].forEach(n => {
+        const btn = document.getElementById('cli-sub-serifu-' + n);
+        if (!btn) return;
+        btn.classList.toggle('btn-active', cliSerifuCheckOn);
+        btn.title = cliSerifuCheckOn
+            ? 'メイン本文で使用済みのセリフを塗る（ON）'
+            : '使用済みセリフの塗り分け（OFF）';
+    });
+}
+
+/** パス末尾のファイル名だけ（トースト用） */
+function cliShortName(path) {
+    return (path || '').split('/').pop();
+}
+
+function cliInitSerifuCheck() {
+    try {
+        const saved = localStorage.getItem(CLI_SERIFU_KEY);
+        if (saved !== null) cliSerifuCheckOn = (saved === '1');
+    } catch (_) {}
+    cliUpdateSerifuButtons();
+}

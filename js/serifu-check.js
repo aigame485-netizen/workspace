@@ -70,10 +70,14 @@ function findUsedMatch(target, mainQuotes) {
             if (target === q) return 100;
             continue;
         }
-        // 長さ差だけで閾値を割るものはスキップ（高速化）
-        if (Math.abs(lt - lq) / maxLen > (1 - thr)) continue;
-        const sim = 1 - levenshtein(target, q) / maxLen;
-        if (sim >= thr) return Math.round(sim * 100);
+        // 許容できる編集距離。足切りと本判定で同じ物差しを使い、境界でズレないようにする。
+        // 1e-9 は浮動小数点の丸め対策（例: 1-0.9 が 0.09999999999999998 になり、
+        // ちょうど閾値ぴったりの組が足切りされてしまうのを防ぐ）
+        const maxDist = (1 - thr) * maxLen + 1e-9;
+        // 長さ差は編集距離の下限なので、これだけで超えるものは計算せずスキップ（高速化）
+        if (Math.abs(lt - lq) > maxDist) continue;
+        const dist = levenshtein(target, q);
+        if (dist <= maxDist) return Math.round((1 - dist / maxLen) * 100);
     }
     return null;
 }
@@ -169,6 +173,8 @@ async function changeSerifuThreshold(val) {
     if (input && parseFloat(input.value) !== pct) input.value = pct;
     await setSetting('serifu_threshold', pct);
     scheduleSerifuCheck(0);
+    // CLIビューアのサブペインも同じ閾値で塗り直す
+    if (window.cliRefreshSerifuMarks) window.cliRefreshSerifuMarks();
 }
 
 // 初期化（main.jsのonload末尾から呼ばれる。DB初期化済みが前提）
