@@ -33,6 +33,10 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         let isSaving = false;
         let saveTimers = {};
         let blobCache = {};
+        // Canvas（作業場）のウィンドウをIndexedDBから復元済みか。
+        // CLIビューアで起動した時はCanvasがdisplay:noneで隠れたままなので、
+        // 復元は📡でCanvasへ戻る時まで後回しにする（遅延ロード）
+        let isCanvasLoaded = false;
         
         let currentTabId = 1;
         // タブの表示名（ローカル専用。クラウドのファイル名とは切り離して管理する）
@@ -84,13 +88,17 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             }
             updateTabUI();
             updateBoardDisplay();
-            loadFromDB();
 
             // セリフ使用済みチェッカーの初期化（メイン指定・一致率の復元）
             if (window.initSerifuCheck) window.initSerifuCheck();
 
             // CLIビューアをデフォルト表示にする
             toggleCliViewer();
+
+            // Canvasの復元は「Canvasを実際に見る時」だけ。
+            // CLIモードで起動した場合は隠れたウィンドウを作っても見えないうえ、
+            // 生成時のnotifyChangeで自動保存が走り、CLIのトーストに「保存済」が降ってきてしまう
+            if (!window.cliIsActive || !window.cliIsActive()) loadFromDB();
         };
 
         async function switchTab(tabId) {
@@ -722,8 +730,16 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             tx.objectStore(activeStore).delete(id);
             delete blobCache[id];
         }
+        // Canvasを表示する直前に、まだ復元していなければウィンドウを読み込む（CLI起動時の遅延ロード用）
+        function ensureCanvasLoaded() {
+            if (isCanvasLoaded) return;
+            loadFromDB();
+        }
+        window.ensureCanvasLoaded = ensureCanvasLoaded;
+
         async function loadFromDB() {
             if(!db) return;
+            isCanvasLoaded = true;   // 読み込み中の二重起動も防ぐため、取得の完了を待たずに立てる
             document.getElementById('canvas').innerHTML = '';
             const activeStore = getActiveStore();
             const tx = db.transaction([activeStore], 'readonly');
@@ -752,6 +768,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         }
         function notifyChange(winId) {
             if (!isAutoSaveEnabled) return;
+            // Canvasを復元していない間（CLIモードで起動した直後）は保存対象が揃っていないので何もしない
+            if (!isCanvasLoaded) return;
             if (saveTimers[winId]) clearTimeout(saveTimers[winId]);
             updateStatus('変更...', false);
             saveTimers[winId] = setTimeout(async () => {
@@ -762,6 +780,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
         }
         async function manualSaveAll() {
             if(isSaving) return;
+            // 未復元のCanvas（＝ウィンドウ0個）を保存しにいかない。中身のない状態で上書きしないための保険
+            if(!isCanvasLoaded) return;
             isSaving=true; document.getElementById('btn-manual-save').disabled=true;
             updateStatus('保存中...', false);
             const wins=document.querySelectorAll('.window');

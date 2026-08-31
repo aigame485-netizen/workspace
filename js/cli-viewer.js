@@ -39,6 +39,9 @@ const CLI_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
 // モード切替
 // =========================================
 
+// 今CLIモードかどうか（main.js からCanvasの遅延ロード判定に使う）
+window.cliIsActive = () => cliViewerActive;
+
 function toggleCliViewer() {
     cliViewerActive = !cliViewerActive;
     const canvas = document.getElementById('canvas');
@@ -67,6 +70,8 @@ function toggleCliViewer() {
         if (cliEditMode) cliExitEditMode(true);
         cliHideImage();
         cliDismissDraftBanner();
+        // CLIモードで起動した場合、Canvasのウィンドウはまだ復元していない。ここで初めて読み込む
+        if (window.ensureCanvasLoaded) window.ensureCanvasLoaded();
         canvas.style.display = '';
         // ヘッダー要素を復元
         Array.from(header.children).forEach(el => {
@@ -188,12 +193,19 @@ function closeCliSidebar() {
 // main.js の updateStatus() からここへ流して画面上部に出す。
 // =========================================
 
+// 作業場（Canvas）側の保存通知。CLIビューアとは無関係なのでトーストには出さない。
+// CLI側の保存は「💾 保存中...」「✅ 保存完了」と絵文字付きなので、完全一致では引っかからない
+const CLI_STATUS_IGNORE = ['変更...', '保存済', '保存中...', '保存完了', '切替中...'];
+
 function cliOnStatus(msg, saved, isError) {
     const el = document.getElementById('cli-status-toast');
     if (!el || !cliViewerActive) return;
 
     // 「Ready」は待機状態なので何も出さない
     if (!msg || msg === 'Ready') { el.classList.remove('show'); return; }
+
+    // 作業場側の通知は無視（何も保存していないのに「保存済」が降りてくるのを防ぐ）
+    if (CLI_STATUS_IGNORE.includes(msg)) return;
 
     if (cliStatusTimer) clearTimeout(cliStatusTimer);
 
