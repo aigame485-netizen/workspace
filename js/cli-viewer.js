@@ -2980,11 +2980,12 @@ document.addEventListener('keydown', (e) => {
 
 // =========================================
 // 指示パッドのキーボード操作（Androidに繋いだキーボード/マウス向け）
-//   Ctrl+I     … 指示パッドを開いて入力窓にフォーカス（もう一度押すと本文へ戻る）
+//   Ctrl+I     … 指示パッドを開いて入力窓にフォーカス
+//                （もう一度押すとパッドを畳んで本文へ戻る）
 //   Ctrl+P     … 今開いているファイルのパスを指示パッドへ挿入（ブラウザの印刷は封じる）
 //   Ctrl+Enter … 指示パッドの内容をコピー
 //                （Ctrl+C は本文のテキスト選択コピーと被るので使わない）
-//   Esc        … 指示パッドから本文へ戻る
+//   Esc        … 指示パッドを畳んで本文へ戻る
 //   Ctrl+/ , F1 … ショートカット一覧
 // Ctrl+Shift+◯ はブラウザ側（Ctrl+Shift+I=開発者ツール等）に譲るので拾わない
 // =========================================
@@ -3037,10 +3038,15 @@ function cliOpenInstructionPad(opts = {}) {
     return true;
 }
 
-/** 指示パッドから本文へ戻る（編集中ならカーソルもエディタへ返す） */
+/**
+ * 指示パッドから本文へ戻る。
+ * フォーカスを戻すだけではパッドが開いたまま本文を圧迫するので、**パッドも下に畳む**。
+ * PC幅（1024px以上）は右パネル常時表示で「畳む」概念がない（CSSで .collapsed を打ち消している）ので触らない。
+ */
 function cliLeaveInstructionPad() {
     const ta = cliInstructionEl();
     if (ta) ta.blur();
+    if (!cliIsPcLayout() && cliMemoExpanded) toggleCliMemoExpand();
     if (cliEditorInstance && cliActivePane === 'main' && cliEditMode) {
         cliEditorInstance.focus();
     }
@@ -3069,10 +3075,11 @@ const CLI_SHORTCUT_HELP = [
     '  Ctrl+S … 保存（メインで編集中のみ）',
     '',
     '【指示パッド】',
-    '  Ctrl+I … 指示パッドを開いて入力窓へ（もう一度押すと本文へ戻る）',
+    '  Ctrl+I … 指示パッドを開いて入力窓へ',
+    '           （もう一度押すと畳んで本文へ戻る）',
     '  Ctrl+P … 今開いているファイルのパスを挿入',
     '  Ctrl+Enter … 内容をクリップボードにコピー',
-    '  Esc … 入力窓から本文へ戻る',
+    '  Esc … パッドを畳んで本文へ戻る',
     '',
     '※ Ctrl+C は本文のテキスト選択コピーに使うため、',
     '　 指示パッドのコピーは Ctrl+Enter に割り当てています'
