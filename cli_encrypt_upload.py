@@ -95,6 +95,8 @@ def upload(gas_url: str, auth: str, file_path: str, upload_path: str, enc_key: s
 
     req = urllib.request.Request(url, data=body, method='POST')
     req.add_header('Content-Type', 'text/plain; charset=utf-8')
+    # Cloudflareは既定の名乗り（Python-urllib）をボットとして403で止めるので、独自の名乗りを付ける
+    req.add_header('User-Agent', 'cli_encrypt_upload/1.0')
 
     with urllib.request.urlopen(req) as resp:
         result = json.loads(resp.read().decode('utf-8'))
