@@ -119,7 +119,7 @@
             <button class="btn-tool btn-font" onclick="cliChangeFontSize(2)">A+</button>
             <button class="btn-tool" id="cli-btn-refresh" onclick="cliRefreshCurrentFile()" title="開いているファイルの中身を再取得（ファイル一覧は更新しません）">🔄</button>
             <button class="btn-tool" onclick="cliShowShortcutHelp()" title="キーボードショートカット一覧（Ctrl+/）">⌨</button>
-            <button class="btn-tool" onclick="openConnectionSettings()" title="合言葉・暗号キーの設定">🔐</button>
+            <button class="btn-tool" onclick="openConnectionSettings()" title="接続先URL・合言葉・暗号キーの設定">🔐</button>
         </div>
 
         <div class="cli-sidebar" id="cli-sidebar">
@@ -133,7 +133,7 @@
                 <div style="text-align:center; color:#718096; padding:20px;">📡 CLIボタンで開始</div>
             </div>
             <div class="cli-sidebar-footer">
-                <button class="btn-control" id="cli-btn-refresh-list" onclick="cliRefreshFileList()" style="width:100%; padding:8px; margin-bottom:6px;" title="GASに接続してファイル一覧を取り直します">🔄 一覧を更新</button>
+                <button class="btn-control" id="cli-btn-refresh-list" onclick="cliRefreshFileList()" style="width:100%; padding:8px; margin-bottom:6px;" title="サーバーに接続してファイル一覧を取り直します">🔄 一覧を更新</button>
                 <div class="cli-list-meta" id="cli-list-meta">一覧: 未取得</div>
                 <button class="btn-control btn-danger" onclick="cliDeleteAllFiles()" style="width:100%; padding:8px;">🗑️ 全ファイル削除</button>
             </div>
@@ -276,7 +276,7 @@
         </div>
     </div>
 
-    <!-- 接続設定モーダル（合言葉・暗号キーの入力口はここ1箇所に集約） -->
+    <!-- 接続設定モーダル（接続先URL・合言葉・暗号キーの入力口はここ1箇所に集約） -->
     <div id="connSettingsModal" class="modal-overlay" onclick="if(event.target===this) closeConnectionSettings()">
         <div class="modal-box" style="max-width: 440px;">
             <h3 class="modal-title">🔐 接続設定</h3>
@@ -287,10 +287,23 @@
 
                 <div class="conn-block">
                     <div class="conn-row">
+                        <span class="conn-label">🌐 接続先URL</span>
+                        <span id="conn-url-status" class="conn-status">確認中...</span>
+                    </div>
+                    <p class="conn-desc">データを置いているサーバーのURL（https:// で始まるもの）。cli_config.json の gas_url と同じものを入れます。</p>
+                    <div class="input-group">
+                        <input type="text" id="conn-url-input" class="input-text" placeholder="https://..." style="flex:1;"
+                               autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" onkeydown="if(event.key==='Enter') saveApiUrl()">
+                        <button class="btn-control" onclick="saveApiUrl()" style="padding:6px 12px;">保存</button>
+                    </div>
+                </div>
+
+                <div class="conn-block">
+                    <div class="conn-row">
                         <span class="conn-label">🗝️ 合言葉</span>
                         <span id="conn-auth-status" class="conn-status">確認中...</span>
                     </div>
-                    <p class="conn-desc">サーバー（GAS）に接続するための鍵。PCの cli_encrypt_upload.py と同じものを入れます。</p>
+                    <p class="conn-desc">サーバーに接続するための鍵。PCの cli_config.json の auth と同じものを入れます。</p>
                     <div class="input-group">
                         <input type="password" id="conn-auth-input" class="input-text" placeholder="合言葉を入力..." style="flex:1;"
                                autocomplete="off" onkeydown="if(event.key==='Enter') saveAuthPassword()">
@@ -305,7 +318,7 @@
                         <span class="conn-label">🔐 暗号キー</span>
                         <span id="conn-enc-status" class="conn-status">確認中...</span>
                     </div>
-                    <p class="conn-desc">クラウド上のデータを暗号化する鍵。この端末の中だけに保存され、Google側には送られません。</p>
+                    <p class="conn-desc">クラウド上のデータを暗号化する鍵。この端末の中だけに保存され、サーバーには送られません。</p>
                     <div class="input-group">
                         <input type="password" id="conn-enc-input" class="input-text" placeholder="暗号キーを入力..." style="flex:1;"
                                autocomplete="off" onkeydown="if(event.key==='Enter') saveEncKey()">
@@ -333,7 +346,7 @@
             </div>
             <div class="modal-footer fb-footer">
                 <span class="fb-tree-meta" id="fb-tree-meta">構造: 未取得</span>
-                <button class="btn-control" id="fb-btn-refresh" onclick="fbFetchTree()" title="GASに接続してフォルダ構造を取り直します">🔄 更新</button>
+                <button class="btn-control" id="fb-btn-refresh" onclick="fbFetchTree()" title="サーバーに接続してフォルダ構造を取り直します">🔄 更新</button>
                 <button class="btn-control" onclick="closeFolderBrowser()">閉じる</button>
             </div>
         </div>
@@ -348,7 +361,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
 
     <!-- 既存ロジック -->
-    <script src="js/main.js?v=20260831"></script>
+    <script src="js/main.js?v=20260915"></script>
 
     <!-- CodeMirror初期化 -->
     <script src="js/cm-init.js?v=20260827b"></script>
@@ -357,6 +370,6 @@
     <script src="js/serifu-check.js?v=20260901"></script>
 
     <!-- CLI Viewer -->
-    <script src="js/cli-viewer.js?v=20260901e"></script>
+    <script src="js/cli-viewer.js?v=20260915"></script>
 </body>
 </html>

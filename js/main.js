@@ -1,5 +1,3 @@
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fEklillB729ge_b9-q9afAZPartKazdS9-6u8xkfDercVRaLl2/exec"; 
-
         // --- CodeMirror 互換ヘルパー ---
         function getWindowText(winId) {
             if (window.cmGetEditorText) {
@@ -219,10 +217,30 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             const tx = db.transaction([STORE_SETTINGS], 'readwrite');
             tx.objectStore(STORE_SETTINGS).put({ key: key, value: val });
         }
+        // 通信の入口。接続先URL→合言葉の順に確保し、どちらかが得られなければ null を返す
         async function getAuthPassword() {
+            if (!(await ensureApiUrl())) return null;
             let pass = await getSetting('auth_password');
             if (!pass) pass = await requestAuthPassword();
             return pass;
+        }
+
+        // --- 接続先URL（コードには書かず、接続設定モーダルで入力してIndexedDBに保存する） ---
+        // 通信URLを組み立てる時はこれを使う。getAuthPassword() を通した後なら必ず設定済み
+        async function getApiUrl() {
+            const url = await getSetting('api_url');
+            if (!url) throw new Error('接続先URLが未設定です（🔐 接続設定で入力してください）');
+            return url;
+        }
+        // 未設定なら接続設定モーダルを開いて入力を待つ
+        async function ensureApiUrl() {
+            const url = await getSetting('api_url');
+            if (url) return url;
+            return new Promise(resolve => {
+                if (apiUrlRequestResolve) { const prev = apiUrlRequestResolve; apiUrlRequestResolve = null; prev(null); }
+                apiUrlRequestResolve = resolve;
+                openConnectionSettings('url');
+            });
         }
         // 未設定なら接続設定モーダルを開いて入力を待つ
         // （prompt()だと「何の合言葉か」「どこで直せるのか」が分からないため）
@@ -303,33 +321,53 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             return new TextDecoder().decode(decrypted);
         }
 
-        // --- 接続設定（合言葉・暗号キー）。入力口はこのモーダル1箇所に集約する ---
-        // 合言葉の入力待ちを解決するための関数を一時的に保持する
+        // --- 接続設定（接続先URL・合言葉・暗号キー）。入力口はこのモーダル1箇所に集約する ---
+        // 入力待ちを解決するための関数を一時的に保持する
         let authRequestResolve = null;
+        let apiUrlRequestResolve = null;
 
-        function openConnectionSettings(forAuth = false) {
+        // need: 'url' / 'auth'（true も 'auth' 扱い）なら、何の入力が必要かを表示してその欄にフォーカスする
+        async function openConnectionSettings(need = false) {
+            if (need === true) need = 'auth';
+            const urlInput = document.getElementById('conn-url-input');
             const authInput = document.getElementById('conn-auth-input');
             const encInput = document.getElementById('conn-enc-input');
             if (authInput) { authInput.value = ''; authInput.type = 'password'; }
             if (encInput) { encInput.value = ''; encInput.type = 'password'; }
+            if (urlInput) urlInput.value = (await getSetting('api_url')) || '';
 
             const note = document.getElementById('conn-need-auth');
-            if (note) note.style.display = forAuth ? 'block' : 'none';
+            if (note) {
+                note.style.display = need ? 'block' : 'none';
+                note.textContent = (need === 'url')
+                    ? '⚠️ サーバーに接続するには接続先URLが必要です。下の欄に入力してください。'
+                    : '⚠️ サーバーに接続するには合言葉が必要です。下の欄に入力してください。';
+            }
 
             document.getElementById('connSettingsModal').classList.add('show');
             updateConnectionStatus();
-            if (forAuth && authInput) setTimeout(() => authInput.focus(), 100);
+            const focusEl = (need === 'url') ? urlInput : (need ? authInput : null);
+            if (focusEl) setTimeout(() => focusEl.focus(), 100);
         }
         function closeConnectionSettings() {
             document.getElementById('connSettingsModal').classList.remove('show');
-            // 合言葉の入力待ちだった場合は「入力なし」として解決する
+            // 入力待ちだった場合は「入力なし」として解決する
+            if (apiUrlRequestResolve) { const r = apiUrlRequestResolve; apiUrlRequestResolve = null; r(null); }
             if (authRequestResolve) { const r = authRequestResolve; authRequestResolve = null; r(null); }
         }
-        // 合言葉・暗号キーの設定状況を、モーダルとクラウドモーダルの両方へ反映
+        // 接続先URL・合言葉・暗号キーの設定状況を、モーダルとクラウドモーダルの両方へ反映
         async function updateConnectionStatus() {
+            const apiUrl = await getSetting('api_url');
             const pass = await getSetting('auth_password');   // getAuthPasswordだとモーダルが再帰的に開くので直接読む
             const key = await getEncryptionKey();
 
+            const urlEl = document.getElementById('conn-url-status');
+            if (urlEl) {
+                let host = '';
+                try { host = apiUrl ? new URL(apiUrl).host : ''; } catch (e) { host = ''; }
+                urlEl.textContent = apiUrl ? `✅ ${host || '設定済み'}` : '⚠️ 未設定';
+                urlEl.style.color = apiUrl ? '#48bb78' : '#f6ad55';
+            }
             const authEl = document.getElementById('conn-auth-status');
             if (authEl) {
                 authEl.textContent = pass ? '✅ 設定済み' : '⚠️ 未設定';
@@ -358,6 +396,22 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             const show = (el.type === 'password');
             el.type = show ? 'text' : 'password';
             if (btn) btn.classList.toggle('active', show);
+        }
+
+        async function saveApiUrl() {
+            const input = document.getElementById('conn-url-input');
+            const url = input.value.trim();
+            if (!url.startsWith('https://')) return alert('https:// で始まるURLを入力してください');
+            await setSetting('api_url', url);
+            await updateConnectionStatus();
+            updateStatus('🌐 接続先URLを保存', true);
+            // 通信の途中で開いていた場合は、その処理へURLを返す。
+            // 合言葉も未設定なら、続けて入力できるようモーダルは開いたままにする
+            if (apiUrlRequestResolve) {
+                const r = apiUrlRequestResolve; apiUrlRequestResolve = null;
+                if (await getSetting('auth_password')) document.getElementById('connSettingsModal').classList.remove('show');
+                r(url);
+            }
         }
 
         async function saveAuthPassword() {
@@ -436,7 +490,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             if(!pass) { listEl.innerHTML='<div style="text-align:center;">認証が必要です</div>'; return; }
 
             try {
-                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=list`;
+                const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=list`;
                 const res = await fetch(url, { method: 'POST' });
                 const json = await res.json();
 
@@ -536,7 +590,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
                     const encObj = await encryptData(sendBody, encKey);
                     sendBody = JSON.stringify(encObj);
                 }
-                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&boardName=${encodeURIComponent(boardName)}`;
+                const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&boardName=${encodeURIComponent(boardName)}`;
                 const res = await fetch(url, { method: 'POST', body: sendBody });
                 const json = await res.json();
                 
@@ -554,8 +608,9 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             if(!confirm(`「${boardName}」を削除しますか？`)) return;
             updateStatus("削除中...", false);
             const pass = await getAuthPassword();
+            if (!pass) { updateStatus("削除を中止", false, true); return; }
             try {
-                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=delete&boardName=${encodeURIComponent(boardName)}`;
+                const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=delete&boardName=${encodeURIComponent(boardName)}`;
                 const res = await fetch(url, { method: 'POST' });
                 const json = await res.json();
                 if(json.status === 'success') {
@@ -577,9 +632,10 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyCsdPclvOpyEyxB4fE
             const label = tabLabels[currentTabId];
             if(!confirm(`クラウドの「${boardName}」を タブ「${label}」に読み込みます。\n「${label}」の今の内容は消えます。よろしいですか？`)) return;
             updateStatus("受信中...", false);
-            const pass = await getAuthPassword(); 
+            const pass = await getAuthPassword();
+            if (!pass) { updateStatus("受信を中止", false, true); return; }
             try {
-                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=download&boardName=${encodeURIComponent(boardName)}`;
+                const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=download&boardName=${encodeURIComponent(boardName)}`;
                 const res = await fetch(url, { method: 'POST', body: "" });
                 const text = await res.text();
                 let importData;

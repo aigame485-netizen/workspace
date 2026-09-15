@@ -422,7 +422,7 @@ async function cliRefreshFileList() {
 
     try {
         updateStatus('CLI一覧取得中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_list`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_list`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
 
@@ -714,7 +714,7 @@ async function cliOpenFile(path) {
 
         try {
             updateStatus('画像取得中...', false);
-            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(path)}`;
+            const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(path)}`;
             const res = await fetch(url, { method: 'POST' });
             const json = await res.json();
 
@@ -813,7 +813,7 @@ async function cliOpenFile(path) {
 
     try {
         updateStatus('ファイル取得中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(path)}`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(path)}`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
 
@@ -894,7 +894,7 @@ async function cliDeleteFile(path) {
 
     try {
         updateStatus('削除中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=${encodeURIComponent(path)}`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=${encodeURIComponent(path)}`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
 
@@ -931,7 +931,7 @@ async function cliDeleteFolder(folderName, files) {
 
         for (const f of files) {
             try {
-                const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=${encodeURIComponent(f.path)}`;
+                const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=${encodeURIComponent(f.path)}`;
                 const res = await fetch(url, { method: 'POST' });
                 const json = await res.json();
                 if (json.status === 'success') {
@@ -969,7 +969,7 @@ async function cliDeleteAllFiles() {
 
     try {
         updateStatus('全削除中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=*`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=*`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
 
@@ -1141,7 +1141,7 @@ async function cliEnsureGasVersion() {
     const pass = await getAuthPassword();
     if (!pass) return 1;
     try {
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_capabilities`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_capabilities`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
         cliGasVersion = (json && json.version) ? json.version : 1;
@@ -1180,7 +1180,7 @@ async function cliPrefetchSiblings(path) {
         const pass = await getAuthPassword();
         if (!pass) return;
 
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download_batch`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_download_batch`;
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1362,7 +1362,7 @@ async function cliSaveFile() {
 
     try {
         updateStatus('💾 保存中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_upload&path=${encodeURIComponent(cliCurrentFile)}`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_upload&path=${encodeURIComponent(cliCurrentFile)}`;
         const res = await fetch(url, {
             method: 'POST',
             body: body
@@ -1375,10 +1375,13 @@ async function cliSaveFile() {
             cliHasUnsavedChanges = false;
             cliUpdateEditButtons();
 
-            // キャッシュも更新
-            await cliSaveFileToCache(cliCurrentFile, content, new Date().toISOString());
+            // キャッシュも更新。日時はサーバーの保存日時を使い、一覧側もそろえる
+            // （そろえておくと、保存直後に開き直した時に再取得しない）
+            const listed = Array.isArray(cliFileList) ? cliFileList.find(f => f.path === cliCurrentFile) : null;
+            if (listed && json.updatedAt) listed.updatedAt = json.updatedAt;
+            await cliSaveFileToCache(cliCurrentFile, content, json.updatedAt || new Date().toISOString());
 
-            // 下書きを消す（GASに保存できたので不要）
+            // 下書きを消す（サーバーに保存できたので不要）
             await cliClearDraft(cliCurrentFile);
             cliDismissDraftBanner();
 
@@ -1776,7 +1779,7 @@ async function fbFetchTree() {
     if (btn) { btn.disabled = true; btn.textContent = '🔄 更新中...'; }
 
     try {
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent('_system/folder_tree.json')}`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent('_system/folder_tree.json')}`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
 
@@ -2106,7 +2109,7 @@ async function cliDiscardDraftAndRefresh() {
 
     try {
         updateStatus('ファイル取得中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(cliCurrentFile)}`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(cliCurrentFile)}`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
 
@@ -2266,7 +2269,7 @@ async function cliRefreshCurrentFile() {
 
     try {
         updateStatus('ファイル再取得中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(cliCurrentFile)}`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(cliCurrentFile)}`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
 
@@ -2333,7 +2336,7 @@ async function cliRefreshProposals() {
 
     try {
         updateStatus('提案取得中...', false);
-        const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_list`;
+        const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_list`;
         const res = await fetch(url, { method: 'POST' });
         const json = await res.json();
 
@@ -2355,7 +2358,7 @@ async function cliRefreshProposals() {
         cliProposalsData = [];
         for (const f of proposalFiles) {
             try {
-                const dlUrl = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(f.path)}`;
+                const dlUrl = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_download&path=${encodeURIComponent(f.path)}`;
                 const dlRes = await fetch(dlUrl, { method: 'POST' });
                 const dlJson = await dlRes.json();
 
@@ -2535,7 +2538,7 @@ async function cliDeleteAllProposals() {
 
         const paths = cliProposalsData.map(p => p.path);
         for (const path of paths) {
-            const url = `${GAS_API_URL}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=${encodeURIComponent(path)}`;
+            const url = `${await getApiUrl()}?auth=${encodeURIComponent(pass)}&action=cli_delete&path=${encodeURIComponent(path)}`;
             await fetch(url, { method: 'POST' });
         }
 
@@ -2773,7 +2776,7 @@ async function cliFetchSubContent(path) {
     if (!pass) return null;
 
     updateStatus('📚 サブ取得中...', false);
-    const url = GAS_API_URL + '?auth=' + encodeURIComponent(pass)
+    const url = (await getApiUrl()) + '?auth=' + encodeURIComponent(pass)
         + '&action=cli_download&path=' + encodeURIComponent(path);
     const res = await fetch(url, { method: 'POST' });
     const json = await res.json();

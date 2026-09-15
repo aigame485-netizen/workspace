@@ -19,3 +19,11 @@
 *.rar
 Thumbs.db
 .DS_Store
+
+# Cloudflare Worker（ローカル生成物・秘密値）
+worker/node_modules/
+worker/.wrangler/
+worker/.dev.vars
+
+# 移行作業用（公開しない）
+Worker移行_要件定義.md

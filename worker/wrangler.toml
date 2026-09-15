@@ -1,0 +1,15 @@
+# Canvas Workspace API（Cloudflare Workers + R2）
+# トークン（SECRET_KEY）は `npx wrangler secret put SECRET_KEY` で登録する。ここには書かない。
+# ローカル確認用の値は .dev.vars に書く（git管理外）。
+
+name = "workspace-api"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# CORSで許可するOrigin（カンマ区切り）
+ALLOWED_ORIGINS = "https://aigame485-netizen.github.io"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "workspace-data"
