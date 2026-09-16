@@ -1386,7 +1386,6 @@ async function cliSaveFile() {
             cliDismissDraftBanner();
 
             updateStatus('✅ 保存完了', true);
-            showCliSaveToast();
         } else {
             throw new Error(json.message);
         }
@@ -1394,25 +1393,6 @@ async function cliSaveFile() {
         alert('保存失敗: ' + e.message);
         updateStatus('保存失敗', false, true);
     }
-}
-
-/**
- * 保存完了トースト通知
- */
-function showCliSaveToast() {
-    const existing = document.querySelector('.cli-save-toast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.className = 'cli-save-toast';
-    toast.textContent = '✅ 保存しました — CLIから pull で取得できます';
-    document.body.appendChild(toast);
-
-    setTimeout(() => toast.classList.add('show'), 10);
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
-    }, 2500);
 }
 
 // =========================================

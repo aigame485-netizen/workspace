@@ -960,18 +960,6 @@
             background-color: var(--editor-bg) !important;
         }
 
-        /* 保存完了トースト通知 */
-        .cli-save-toast {
-            position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
-            background: linear-gradient(135deg, #38a169, #2f855a);
-            color: white; padding: 12px 24px; border-radius: 8px;
-            font-size: 0.9rem; font-weight: bold; z-index: 20000;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            transition: top 0.3s ease;
-            white-space: nowrap;
-        }
-        .cli-save-toast.show { top: calc(12px + env(safe-area-inset-top, 0px)); }
-
         /* =========================================
            フォルダツリーブラウザ
            ========================================= */
