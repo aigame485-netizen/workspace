@@ -130,6 +130,8 @@ async function initCliViewer() {
             spellcheck: false,
             viewportMargin: Infinity
         });
+        // 独自記法（【】・行頭◆■●）の色替え。定義は cm-init.js
+        cmApplyMarkupColors(cliEditorInstance);
         cliEditorInstance.getWrapperElement().style.fontSize = cliFontSize + "px";
         // 書体はCSS変数で一元管理（ヘッダーの書体セレクトから変更される）
         cliEditorInstance.getWrapperElement().style.fontFamily = "var(--editor-font)";

@@ -9,6 +9,51 @@
 // 各ウィンドウのIDをキーにCodeMirrorインスタンスを保持
 const editorInstances = {};
 
+// ========================================
+// 独自記法の色替え（ルール一覧は 色替えルール.md）
+// ========================================
+// 記法を増やすときはこの表に1行足し、style.css に同名クラスの色を足す
+const MARKUP_COLOR_RULES = [
+    { type: 'line', mark: '◆', cls: 'mk-diamond' },          // 行頭記号 → 行全体
+    { type: 'line', mark: '■', cls: 'mk-square' },
+    { type: 'line', mark: '●', cls: 'mk-circle' },
+    { type: 'wrap', open: '【', close: '】', cls: 'mk-bracket' } // 囲み → 括弧ごと
+];
+
+/**
+ * 独自記法の色替えオーバーレイをエディタに追加する
+ * markdownの色付けの上に重ねるので、既存の <!-- --> 等はそのまま残る
+ * @param {CodeMirror.Editor} cm
+ */
+function applyMarkupColors(cm) {
+    const lineRules = MARKUP_COLOR_RULES.filter(r => r.type === 'line');
+    const wrapRules = MARKUP_COLOR_RULES.filter(r => r.type === 'wrap');
+    const openChars = wrapRules.map(r => r.open);
+    cm.addOverlay({
+        token(stream) {
+            // 行頭（半角・全角スペースの字下げは許容）に記号があれば行末まで色替え
+            if (stream.sol()) {
+                const head = stream.string.replace(/^[ \t　]*/, '');
+                const rule = lineRules.find(r => head.startsWith(r.mark));
+                if (rule) { stream.skipToEnd(); return rule.cls; }
+            }
+            // 囲み記法：同じ行に閉じ括弧があるときだけ色替え
+            for (const r of wrapRules) {
+                if (stream.peek() === r.open && stream.string.indexOf(r.close, stream.pos + 1) >= 0) {
+                    stream.skipTo(r.close);
+                    stream.next();
+                    return r.cls;
+                }
+            }
+            // 次の開き括弧の手前まで読み飛ばす
+            stream.next();
+            while (!stream.eol() && !openChars.includes(stream.peek())) stream.next();
+            return null;
+        }
+    });
+}
+window.cmApplyMarkupColors = applyMarkupColors;
+
 /**
  * textarea を CodeMirror エディタに変換する
  * @param {HTMLTextAreaElement} textarea - 変換対象のtextarea
@@ -30,6 +75,8 @@ function createEditor(textarea, winId, fontSize = "14px") {
         spellcheck: false,
         viewportMargin: Infinity // スクロールバー制御用
     });
+
+    applyMarkupColors(editor);
 
     // 初期フォントサイズ設定
     editor.getWrapperElement().style.fontSize = fontSize;
