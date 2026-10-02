@@ -310,9 +310,9 @@
         .cm-s-workspace-dark .cm-comment { color: #6a9955; }
         .cm-s-workspace-dark .cm-string { color: #68d391; }
         /* 独自記法の色替え（cm-init.js の MARKUP_COLOR_RULES と対応。一覧は 色替えルール.md） */
-        .cm-s-workspace-dark .cm-mk-bracket { color: #c586c0; }
+        .cm-s-workspace-dark .cm-mk-bracket { color: #ffb86c; }
         .cm-s-workspace-dark .cm-mk-diamond { color: #4ec9b0; }
-        .cm-s-workspace-dark .cm-mk-square { color: #ce9178; }
+        .cm-s-workspace-dark .cm-mk-square { color: #c586c0; }
         .cm-s-workspace-dark .cm-mk-circle { color: #dcdcaa; }
         /* ウィンドウ帯の文字数カウンタ */
         .win-char-count {
