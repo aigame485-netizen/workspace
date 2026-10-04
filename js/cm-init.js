@@ -17,7 +17,9 @@ const MARKUP_COLOR_RULES = [
     { type: 'line', mark: '◆', cls: 'mk-diamond' },          // 行頭記号 → 行全体
     { type: 'line', mark: '■', cls: 'mk-square' },
     { type: 'line', mark: '●', cls: 'mk-circle' },
-    { type: 'wrap', open: '【', close: '】', cls: 'mk-bracket' } // 囲み → 括弧ごと
+    { type: 'wrap', open: '【', close: '】', cls: 'mk-bracket' }, // 囲み → 括弧ごと
+    // 女の子のセリフ。行頭が「主人公」の行は主人公のセリフなので塗らない
+    { type: 'wrap', open: '「', close: '」', cls: 'mk-serifu', skipLine: /^主人公/ }
 ];
 
 /**
@@ -39,6 +41,7 @@ function applyMarkupColors(cm) {
             }
             // 囲み記法：同じ行に閉じ括弧があるときだけ色替え
             for (const r of wrapRules) {
+                if (r.skipLine && r.skipLine.test(stream.string.replace(/^[ 	　]*/, ''))) continue;
                 if (stream.peek() === r.open && stream.string.indexOf(r.close, stream.pos + 1) >= 0) {
                     stream.skipTo(r.close);
                     stream.next();

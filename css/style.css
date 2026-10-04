@@ -314,6 +314,7 @@
         .cm-s-workspace-dark .cm-mk-diamond { color: #4ec9b0; }
         .cm-s-workspace-dark .cm-mk-square { color: #c586c0; }
         .cm-s-workspace-dark .cm-mk-circle { color: #dcdcaa; }
+        .cm-s-workspace-dark .cm-mk-serifu { color: #f4a6c8; }
         /* ウィンドウ帯の文字数カウンタ */
         .win-char-count {
             font-size: 0.7rem; color: #718096; white-space: nowrap;
