@@ -17,6 +17,7 @@ const MARKUP_COLOR_RULES = [
     { type: 'line', mark: '◆', cls: 'mk-diamond' },          // 行頭記号 → 行全体
     { type: 'line', mark: '■', cls: 'mk-square' },
     { type: 'line', mark: '●', cls: 'mk-circle' },
+    { type: 'line', mark: '▲', cls: 'mk-direction' },        // 演出メモ（【】と同じ色）
     { type: 'wrap', open: '【', close: '】', cls: 'mk-bracket' }, // 囲み → 括弧ごと
     // 女の子のセリフ。行頭が「主人公」の行は主人公のセリフなので塗らない
     { type: 'wrap', open: '「', close: '」', cls: 'mk-serifu', skipLine: /^主人公/ }
@@ -34,8 +35,9 @@ function applyMarkupColors(cm) {
     cm.addOverlay({
         token(stream) {
             // 行頭（半角・全角スペースの字下げは許容）に記号があれば行末まで色替え
+            // 行頭の <!-- は読み飛ばし、その直後の記号も行頭記号として扱う（<!-- ◆… --> 等）
             if (stream.sol()) {
-                const head = stream.string.replace(/^[ \t　]*/, '');
+                const head = stream.string.replace(/^[ \t　]*(<!--[ \t　]*)?/, '');
                 const rule = lineRules.find(r => head.startsWith(r.mark));
                 if (rule) { stream.skipToEnd(); return rule.cls; }
             }
