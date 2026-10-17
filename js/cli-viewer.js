@@ -2850,10 +2850,21 @@ function cliShowSubPlaceholder(slot) {
         '📚 サブ' + slot + ' は空です<br><span class="cli-sub-empty-hint">☰ からファイルを選ぶと、ここに読み込まれます</span>');
 }
 
-/** サブ上部のパス表示（（保存分）＝このセッションではサーバー確認していない） */
+/**
+ * サブ上部のパス表示（（保存分）＝このセッションではサーバー確認していない）
+ * フォルダ部分とファイル名を別spanに分け、幅が足りない時はフォルダ側から省略する
+ * （末尾から削るとファイル名が消えてしまうため）
+ */
 function cliSetSubPathLabel(slot, path, suffix) {
     const el = document.getElementById('cli-sub-path-' + slot);
-    if (el) el.textContent = (path || '') + (suffix || '');
+    if (!el) return;
+    path = path || '';
+    const cut = path.lastIndexOf('/') + 1;
+    const dir = path.slice(0, cut);
+    const name = path.slice(cut);
+    el.innerHTML = (dir ? '<span class="cli-sub-path-dir">' + escapeHtml(dir) + '</span>' : '')
+        + (name ? '<span class="cli-sub-path-name">' + escapeHtml(name) + '</span>' : '')
+        + (suffix ? '<span class="cli-sub-path-suffix">' + escapeHtml(suffix) + '</span>' : '');
 }
 
 /** サブを空に戻す（✕。確認は挟まない＝すぐ捨てられるように） */

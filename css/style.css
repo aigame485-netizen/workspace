@@ -1324,8 +1324,19 @@
         }
         .cli-sub-path {
             font-size: 0.75rem; color: #718096; flex-grow: 1;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            display: flex; min-width: 0; overflow: hidden; white-space: nowrap;
         }
+        /* 幅が足りない時はフォルダ側から縮める（flex-shrinkの差でファイル名を後回しにする） */
+        .cli-sub-path-dir {
+            flex: 0 1000 auto; min-width: 0;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .cli-sub-path-name {
+            flex: 0 1 auto; min-width: 0;
+            overflow: hidden; text-overflow: ellipsis;
+            color: #e2e8f0; font-weight: bold;
+        }
+        .cli-sub-path-suffix { flex-shrink: 0; }
         /* 使用済みセリフの塗り分けトグル（🖍）。ONは黄系でCanvasの👑と揃える */
         .cli-sub-bar .btn-serifu.btn-active { background-color: #b7791f; color: #fff; }
         /* サブ本文の「使用済み」ハイライト。Canvas側の .cm-used-serifu と同じ見た目 */
