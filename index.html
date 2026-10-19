@@ -2,14 +2,14 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>Creative Workspace v9.0</title>
     
     <!-- CodeMirror 5 CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     
     <!-- ?v= はキャッシュバスター。JS/CSSを更新したらこの数字を上げること -->
-    <link rel="stylesheet" href="css/style.css?v=20261017">
+    <link rel="stylesheet" href="css/style.css?v=20261019">
 </head>
 <body>
 
@@ -181,14 +181,28 @@
             </div>
 
             <div class="cli-memo-area" id="cli-memo-area">
+                <!-- 下パネルの高さ調整つまみ（サブを下に出している時だけ表示。誤操作よけに、このつまみだけが反応する） -->
+                <div class="cli-memo-grip" id="cli-memo-grip" title="上下にドラッグして高さを調整"><span></span></div>
                 <div class="cli-memo-header">
                     <div class="cli-memo-tabs">
-                        <button class="cli-memo-tab active" data-tab="instruction" onclick="cliSwitchTab('instruction')" title="指示パッド（Ctrl+I で入力窓へ）">📋 指示パッド</button>
+                        <button class="cli-memo-tab active" data-tab="instruction" onclick="cliSwitchTab('instruction')" title="指示パッド（Ctrl+I で入力窓へ）">📋 指示</button>
                         <button class="cli-memo-tab" data-tab="proposals" onclick="cliSwitchTab('proposals')">💡 提案<span id="cli-proposals-badge" class="cli-proposals-badge" style="display:none;"></span></button>
+                        <!-- サブ1/サブ2を本文と同時に見るためのタブ（中身はヘッダーのサブと同じファイル） -->
+                        <button class="cli-memo-tab cli-dock-tab" id="cli-dock-tab-1" data-tab="dock1" onclick="cliSwitchTab('dock1')" title="サブ1を下に表示">📚 サブ1</button>
+                        <button class="cli-memo-tab cli-dock-tab" id="cli-dock-tab-2" data-tab="dock2" onclick="cliSwitchTab('dock2')" title="サブ2を下に表示">📚 サブ2</button>
                     </div>
                     <button class="cli-memo-collapse-btn" id="cli-memo-toggle" onclick="toggleCliMemoExpand()">▲</button>
                 </div>
                 <div class="cli-memo-body" id="cli-memo-body">
+                    <!-- 下パネルのサブ表示（閲覧専用・整形固定）。全画面サブとは別DOMなのでスクロール位置も別に持つ -->
+                    <div class="cli-tab-content cli-dock-content" id="cli-tab-dock1">
+                        <div class="cli-preview cli-dock-preview" id="cli-dock-preview-1"></div>
+                        <div class="cli-sub-empty cli-dock-empty" id="cli-dock-empty-1"></div>
+                    </div>
+                    <div class="cli-tab-content cli-dock-content" id="cli-tab-dock2">
+                        <div class="cli-preview cli-dock-preview" id="cli-dock-preview-2"></div>
+                        <div class="cli-sub-empty cli-dock-empty" id="cli-dock-empty-2"></div>
+                    </div>
                     <!-- 提案タブ -->
                     <div class="cli-tab-content" id="cli-tab-proposals">
                         <div class="cli-proposals-container" id="cli-proposals-container">
@@ -370,6 +384,6 @@
     <script src="js/serifu-check.js?v=20260901"></script>
 
     <!-- CLI Viewer -->
-    <script src="js/cli-viewer.js?v=20261017"></script>
+    <script src="js/cli-viewer.js?v=20261019"></script>
 </body>
 </html>

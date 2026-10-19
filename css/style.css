@@ -1358,6 +1358,44 @@
         }
         .cli-sub-empty-hint { font-size: 0.78rem; color: #4a5568; }
 
+        /* =========================================
+           下パネルのサブ表示（ドック）
+           ========================================= */
+        .cli-dock-tab.empty { color: #4a5568; }
+        /* タブが4つ並ぶとスマホ幅で溢れるので、長い名前は「…」で切る */
+        .cli-memo-tab {
+            min-width: 0; padding-left: 4px; padding-right: 4px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        /* 高さ調整のつまみ。サブを下に出している時だけ出す */
+        .cli-memo-grip {
+            display: none;
+            height: 16px; cursor: ns-resize;
+            align-items: center; justify-content: center;
+            touch-action: none;   /* ドラッグ中にページがスクロールしないように */
+        }
+        .cli-memo-grip span {
+            width: 48px; height: 4px; border-radius: 2px;
+            background: #4a5568; transition: background 0.15s;
+        }
+        .cli-memo-grip.dragging span { background: #63b3ed; }
+        #cli-viewer.cli-dock-on .cli-memo-grip { display: flex; }
+        /* サブ表示中は高さを固定し、余白なしで本文を詰める */
+        .cli-memo-body.dock-mode {
+            height: var(--cli-dock-h, 40vh);
+            padding: 0;
+        }
+        /* 本文の入力中は3〜4行分まで縮める */
+        #cli-viewer.cli-kb-open .cli-memo-body.dock-mode { height: 6.5em; }
+        .cli-dock-content.active { height: 100%; min-height: 0; gap: 0; }
+        /* .cli-preview の display:none / 絶対配置を打ち消して、パネル内でスクロールさせる */
+        .cli-dock-content .cli-dock-preview {
+            display: block; position: relative; inset: auto;
+            flex: 1; min-height: 0;
+            padding: 10px 14px 24px;
+        }
+        .cli-dock-content .cli-dock-empty { padding: 12px; font-size: 0.85rem; }
+
         /* サブ表示中は、メイン専用のUIを隠す（サブは閲覧専用というのを体で分からせる） */
         #cli-viewer.cli-sub-mode .cli-viewer-area,
         #cli-viewer.cli-sub-mode .cli-memo-area,
@@ -1434,6 +1472,9 @@
                 overflow-y: auto;
             }
             .cli-tab-content.active { flex: 1; min-height: 0; }
+            /* PCの右パネルは高さいっぱい使うので、つまみと高さ固定は使わない */
+            #cli-viewer.cli-dock-on .cli-memo-grip { display: none; }
+            .cli-memo-body.dock-mode { height: auto; }
 
             /* 入力欄はパネルの高さいっぱいまで使う */
             #cli-instruction-content { max-height: none; flex: 1; min-height: 160px; }

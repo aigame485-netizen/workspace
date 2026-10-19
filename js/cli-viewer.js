@@ -14,7 +14,7 @@ let cliMemoExpanded = true;        // 下部パネル（指示パッド/提案�
 let cliEditMode = false;           // 編集モードON/OFF
 let cliOriginalContent = '';       // 編集前の元テキスト（変更検知用）
 let cliHasUnsavedChanges = false;  // 未保存の変更があるか
-let cliActiveTab = 'instruction';  // 'instruction' | 'proposals'
+let cliActiveTab = 'instruction';  // 'instruction' | 'proposals' | 'dock1' | 'dock2'
 let cliDraftSaveTimer = null;      // 下書き自動保存タイマー
 let cliInstructionSaveTimer = null; // 指示パッドの自動保存タイマー
 let cliPendingServerContent = null; // サーバー側の新しい内容（更新バナー表示中）
@@ -140,6 +140,10 @@ async function initCliViewer() {
         // 範囲選択時に文字数バッジへ選択文字数を表示する
         cliEditorInstance.on("cursorActivity", cliUpdateCharCount);
 
+        // 入力中は下パネルのサブを縮める（ソフトキーボードで画面が狭くなるため）
+        cliEditorInstance.on("focus", () => { cliEditorFocused = true; cliUpdateKbState(); });
+        cliEditorInstance.on("blur", () => { cliEditorFocused = false; cliUpdateKbState(); });
+
         // 指示パッドの自動保存を初期化（localStorageから復元＋入力リスナー登録）
         cliSetupInstructionAutosave();
 
@@ -166,6 +170,9 @@ async function initCliViewer() {
 
     // 使用済みセリフ塗り分けのON/OFF復元
     cliInitSerifuCheck();
+
+    // 下パネルのサブ表示（高さの復元・つまみ・キーボード検知）
+    cliInitDock();
 }
 
 function destroyCliEditor() {
@@ -1010,6 +1017,10 @@ function cliChangeFontSize(delta) {
     }
     const preview = document.getElementById('cli-preview');
     if (preview) preview.style.fontSize = cliFontSize + 'px';
+    // サブ（全画面・下パネル）も追従させる
+    document.querySelectorAll('.cli-sub-preview, .cli-dock-preview').forEach(el => {
+        el.style.fontSize = cliFontSize + 'px';
+    });
 }
 
 // =========================================
@@ -1282,6 +1293,7 @@ function cliExitEditMode(clearDraft = false) {
     // ビジュアルフィードバック
     document.getElementById('cli-viewer').classList.remove('cli-edit-mode');
     cliUpdateEditButtons();
+    cliUpdateKbState();
     updateStatus('Ready', true);
 }
 
@@ -1303,6 +1315,9 @@ function cliOnEditorChange() {
             cliClearDraft(cliCurrentFile);
         }
     }
+
+    // 下パネルにサブを出していれば、使用済みセリフの塗りを追従させる
+    cliScheduleDockSerifu();
 }
 
 /**
@@ -1412,6 +1427,14 @@ function cliSwitchTab(tabName) {
     // コンテンツの表示切替
     document.getElementById('cli-tab-instruction').classList.toggle('active', tabName === 'instruction');
     document.getElementById('cli-tab-proposals').classList.toggle('active', tabName === 'proposals');
+    document.getElementById('cli-tab-dock1').classList.toggle('active', tabName === 'dock1');
+    document.getElementById('cli-tab-dock2').classList.toggle('active', tabName === 'dock2');
+
+    // サブを下に出す時だけパネルの高さを固定し、つまみを出す
+    const dockSlot = cliDockSlot();
+    document.getElementById('cli-memo-body').classList.toggle('dock-mode', !!dockSlot);
+    document.getElementById('cli-viewer').classList.toggle('cli-dock-on', !!dockSlot);
+    if (dockSlot) cliShowDock(dockSlot);
 
     // 提案タブ初回表示時に自動読み込み
     if (tabName === 'proposals' && !cliProposalsLoaded) {
@@ -2645,13 +2668,20 @@ function cliUpdatePaneTabs() {
     [1, 2].forEach(n => {
         const path = cliSubPaths[n];
         paint('cli-pane-tab-' + n, path ? '📚 ' + cliSubShortName(path) : '📚 ＋', n, !path);
+
+        // 下パネルのタブ（指示/提案と並ぶので短めに切る）
+        const dockTab = document.getElementById('cli-dock-tab-' + n);
+        if (dockTab) {
+            dockTab.textContent = path ? '📚 ' + cliSubShortName(path, 5) : '📚 サブ' + n;
+            dockTab.classList.toggle('empty', !path);
+        }
     });
 }
 
 /** タブに載せる短い名前（拡張子を落として省略） */
-function cliSubShortName(path) {
+function cliSubShortName(path, maxLen = 8) {
     const name = path.split('/').pop().replace(/\.[^.]+$/, '');
-    return name.length > 8 ? name.slice(0, 8) + '…' : name;
+    return name.length > maxLen ? name.slice(0, maxLen) + '…' : name;
 }
 
 /** サイドバーに「選んだファイルがどこへ入るか」を出す（アクティブペイン方式の誤爆よけ） */
@@ -2680,6 +2710,7 @@ function cliHandleFileClick(path) {
  * opts.allowServer : キャッシュが古い/無い時にGASへ取りに行くか
  * opts.forceServer : 必ず取りに行くか（🔄）
  * opts.fromSidebar : サイドバーからの選択か（サイドバーを閉じる）
+ * opts.keepPane    : 表示ペインを切り替えない（下パネルから読み込む時）
  */
 async function cliLoadSub(slot, path, opts) {
     opts = opts || {};
@@ -2696,7 +2727,7 @@ async function cliLoadSub(slot, path, opts) {
     cliSetSubPathLabel(slot, path, '');
 
     if (opts.fromSidebar) closeCliSidebar();
-    if (cliActivePane !== slot) cliSwitchPane(slot);
+    if (cliActivePane !== slot && !opts.keepPane) cliSwitchPane(slot);
 
     // 別ファイルに切り替えた時と、まだ何も出ていない時だけ「読み込み中」を出す。
     // 🔄での取り直しでは今見ている内容を消さない（読んでいる途中で真っ白になるのを防ぐ）
@@ -2787,67 +2818,82 @@ async function cliFetchSubContent(path) {
     return { content: content, updatedAt: json.updatedAt, cacheable: cacheable };
 }
 
-/** サブの中身を整形表示に流し込む（サブは常に整形。原文表示は持たない） */
-function cliRenderSub(slot, text) {
-    const el = document.getElementById('cli-sub-preview-' + slot);
-    const empty = document.getElementById('cli-sub-empty-' + slot);
-    if (!el) return;
-    if (empty) { empty.style.display = 'none'; empty.innerHTML = ''; }
-    el.style.display = '';
-
-    // 画像が入っていたらそのまま出す
-    const imageObj = cliTryParseImageContent(text);
-    if (imageObj) {
-        el.innerHTML = '<img src="data:' + imageObj.mimeType + ';base64,' + imageObj.data
-            + '" alt="" class="cli-image-preview">';
-        el.scrollTop = 0;
-        return;
-    }
-
-    if (typeof marked === 'undefined') {
-        // CDNが読めなかった場合は原文をそのまま出す（表示が空になるのを防ぐ）
-        el.innerHTML = '<p class="cli-preview-error">整形用ライブラリを読み込めませんでした。原文を表示します。</p>'
-            + '<pre class="cli-preview-raw">' + escapeHtml(text) + '</pre>';
-        el.scrollTop = 0;
-        return;
-    }
-
-    el.innerHTML = marked.parse(text, { gfm: true, breaks: true });
-
-    // 幅の広い表は、本文ごと横に伸びないよう個別にスクロールさせる
-    el.querySelectorAll('table').forEach(table => {
-        if (table.parentElement && table.parentElement.classList.contains('md-table-wrap')) return;
-        const wrap = document.createElement('div');
-        wrap.className = 'md-table-wrap';
-        table.parentNode.insertBefore(wrap, table);
-        wrap.appendChild(table);
-    });
-
-    // 文字サイズはメインの設定に追従させる（サブ側に調整UIは置かない）
-    el.style.fontSize = cliFontSize + 'px';
-    el.scrollTop = 0;
-
-    // メインで採用済みのセリフを塗る（重複採用よけ）
-    cliApplyUsedSerifu(slot);
+/**
+ * サブ1枠分の表示先。全画面のサブと下パネルの2か所に同じ内容を流し込む
+ * （DOMを分けているので、スクロール位置はそれぞれ別に残る）
+ */
+function cliSubViews(slot) {
+    return [
+        { el: document.getElementById('cli-sub-preview-' + slot), empty: document.getElementById('cli-sub-empty-' + slot), dock: false },
+        { el: document.getElementById('cli-dock-preview-' + slot), empty: document.getElementById('cli-dock-empty-' + slot), dock: true }
+    ].filter(v => v.el);
 }
 
-/** サブの空表示（withRefreshSlotを渡すと🔄取得ボタンを添える） */
-function cliShowSubEmpty(slot, html, withRefreshSlot) {
-    const el = document.getElementById('cli-sub-preview-' + slot);
-    const empty = document.getElementById('cli-sub-empty-' + slot);
-    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
-    if (!empty) return;
-    empty.style.display = 'flex';
-    empty.innerHTML = '<div>' + html + '</div>'
-        + (withRefreshSlot
-            ? '<button class="btn-control" onclick="cliRefreshSub(' + withRefreshSlot + ')">🔄 取得</button>'
-            : '');
+/** サブの中身を整形表示に流し込む（サブは常に整形。原文表示は持たない） */
+function cliRenderSub(slot, text) {
+    const views = cliSubViews(slot);
+    if (!views.length) return;
+
+    let html;
+    const imageObj = cliTryParseImageContent(text);
+    if (imageObj) {
+        // 画像が入っていたらそのまま出す
+        html = '<img src="data:' + imageObj.mimeType + ';base64,' + imageObj.data
+            + '" alt="" class="cli-image-preview">';
+    } else if (typeof marked === 'undefined') {
+        // CDNが読めなかった場合は原文をそのまま出す（表示が空になるのを防ぐ）
+        html = '<p class="cli-preview-error">整形用ライブラリを読み込めませんでした。原文を表示します。</p>'
+            + '<pre class="cli-preview-raw">' + escapeHtml(text) + '</pre>';
+    } else {
+        html = marked.parse(text, { gfm: true, breaks: true });
+    }
+
+    views.forEach(v => {
+        if (v.empty) { v.empty.style.display = 'none'; v.empty.innerHTML = ''; }
+        v.el.style.display = '';
+        v.el.innerHTML = html;
+
+        // 幅の広い表は、本文ごと横に伸びないよう個別にスクロールさせる
+        v.el.querySelectorAll('table').forEach(table => {
+            if (table.parentElement && table.parentElement.classList.contains('md-table-wrap')) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'md-table-wrap';
+            table.parentNode.insertBefore(wrap, table);
+            wrap.appendChild(table);
+        });
+
+        // 文字サイズはメインの設定に追従させる（サブ側に調整UIは置かない）
+        v.el.style.fontSize = cliFontSize + 'px';
+        v.el.scrollTop = 0;
+    });
+
+    // メインで採用済みのセリフを塗る（重複採用よけ）
+    if (!imageObj) cliApplyUsedSerifu(slot);
+}
+
+/**
+ * サブの空表示（withRefreshSlotを渡すと🔄取得ボタンを添える）
+ * dockHtml を渡すと、下パネル側だけ文言を差し替える
+ */
+function cliShowSubEmpty(slot, html, withRefreshSlot, dockHtml) {
+    cliSubViews(slot).forEach(v => {
+        v.el.style.display = 'none';
+        v.el.innerHTML = '';
+        if (!v.empty) return;
+        v.empty.style.display = 'flex';
+        v.empty.innerHTML = '<div>' + ((v.dock && dockHtml) ? dockHtml : html) + '</div>'
+            + (withRefreshSlot
+                ? '<button class="btn-control" onclick="cliRefreshSub(' + withRefreshSlot + ')">🔄 取得</button>'
+                : '');
+    });
 }
 
 /** サブの空タブ用の案内 */
 function cliShowSubPlaceholder(slot) {
     cliShowSubEmpty(slot,
-        '📚 サブ' + slot + ' は空です<br><span class="cli-sub-empty-hint">☰ からファイルを選ぶと、ここに読み込まれます</span>');
+        '📚 サブ' + slot + ' は空です<br><span class="cli-sub-empty-hint">☰ からファイルを選ぶと、ここに読み込まれます</span>',
+        null,
+        '📚 サブ' + slot + ' は空です<br><span class="cli-sub-empty-hint">ヘッダーの 📚 サブ' + slot + ' でファイルを選ぶと、ここにも表示されます</span>');
 }
 
 /**
@@ -3224,12 +3270,15 @@ function cliMarkUsedSerifu(root, mainQuotes) {
     return count;
 }
 
-/** サブ1枚に照合結果を反映（mainQuotesを渡さなければその場で作る） */
+/** サブ1枠（全画面・下パネルの両方）に照合結果を反映（mainQuotesを渡さなければその場で作る） */
 function cliApplyUsedSerifu(slot, mainQuotes) {
-    const el = document.getElementById('cli-sub-preview-' + slot);
-    if (!el) return 0;
-    if (!cliSerifuCheckOn) { cliClearUsedSerifuMarks(el); return 0; }
-    return cliMarkUsedSerifu(el, mainQuotes || cliMainQuoteSet());
+    const views = cliSubViews(slot);
+    if (!views.length) return 0;
+    if (!cliSerifuCheckOn) { views.forEach(v => cliClearUsedSerifuMarks(v.el)); return 0; }
+    const quotes = mainQuotes || cliMainQuoteSet();
+    let count = 0;
+    views.forEach(v => { count = Math.max(count, cliMarkUsedSerifu(v.el, quotes)); });
+    return count;
 }
 
 /** サブ2枚とも塗り直す。メイン本文が変わった後・ON/OFF切替・一致率変更から呼ぶ */
@@ -3278,4 +3327,160 @@ function cliInitSerifuCheck() {
         if (saved !== null) cliSerifuCheckOn = (saved === '1');
     } catch (_) {}
     cliUpdateSerifuButtons();
+}
+
+// =========================================
+// 下パネルのサブ表示（ドック）
+// 全画面切替のサブだと本文と同時に見られないので、指示パッド/提案と並ぶタブにサブ1/サブ2を出す。
+// ・中身はヘッダーのサブと同じファイル（cliRenderSub が両方に流し込む）。閲覧専用
+// ・高さはつまみ（━）のドラッグだけで変える。10px動くまでは反応しない（誤操作よけ）
+// ・本文の入力中はキーボードで画面が狭くなるので、3〜4行分まで縮める
+// ・本文を打つと、少し間を置いてから使用済みセリフの塗りを更新する
+// =========================================
+
+const CLI_DOCK_HEIGHT_KEY = 'cli_dock_height';
+const CLI_DOCK_DRAG_SLOP = 10;      // ドラッグとみなすまでの遊び（px）
+const CLI_DOCK_MIN_HEIGHT = 80;
+const CLI_DOCK_SERIFU_DELAY = 700;  // 打鍵が止まってから塗り直すまでの間（ms）
+
+let cliDockHeight = 0;              // 下パネルの高さ（px）。0＝未設定
+let cliDockSerifuTimer = null;
+let cliEditorFocused = false;       // メイン本文にフォーカスがあるか
+let cliVvBaseHeight = 0;            // キーボードが出ていない時の表示領域の高さ
+let cliVvBaseWidth = 0;             // 画面回転の検知用
+let cliDockReady = false;
+
+/** 下パネルに出しているサブ番号（出していなければ0） */
+function cliDockSlot() {
+    if (cliActiveTab === 'dock1') return 1;
+    if (cliActiveTab === 'dock2') return 2;
+    return 0;
+}
+
+/** タブを開いた時の処理。未読込ならキャッシュから読み、読込済みなら塗りを最新にする */
+function cliShowDock(slot) {
+    const path = cliSubPaths[slot];
+    if (path && !cliSubLoaded[slot] && !cliSubLoading[slot]) {
+        cliLoadSub(slot, path, { allowServer: false, keepPane: true });
+    } else if (cliSubLoaded[slot]) {
+        cliApplyUsedSerifu(slot);
+    }
+}
+
+/** 本文の変更を受けて、下パネルの塗りを間引いて更新する */
+function cliScheduleDockSerifu() {
+    const slot = cliDockSlot();
+    if (!slot || !cliSerifuCheckOn || !cliSubLoaded[slot] || !cliMemoExpanded) return;
+    if (cliDockSerifuTimer) clearTimeout(cliDockSerifuTimer);
+    cliDockSerifuTimer = setTimeout(() => {
+        cliDockSerifuTimer = null;
+        if (cliDockSlot() !== slot) return;
+        const el = document.getElementById('cli-dock-preview-' + slot);
+        // 全画面サブは隠れているので触らない（切り替えた時に cliSwitchPane が塗り直す）
+        if (el) cliMarkUsedSerifu(el, cliMainQuoteSet());
+    }, CLI_DOCK_SERIFU_DELAY);
+}
+
+/** 高さの上限（本文が見えなくならないよう、画面の7割まで） */
+function cliDockMaxHeight() {
+    return Math.max(CLI_DOCK_MIN_HEIGHT + 40, Math.round(window.innerHeight * 0.7));
+}
+
+/** 高さを反映する（save=true で端末に保存） */
+function cliSetDockHeight(h, save) {
+    cliDockHeight = Math.round(Math.min(Math.max(h, CLI_DOCK_MIN_HEIGHT), cliDockMaxHeight()));
+    const viewer = document.getElementById('cli-viewer');
+    if (viewer) viewer.style.setProperty('--cli-dock-h', cliDockHeight + 'px');
+    if (save) {
+        try { localStorage.setItem(CLI_DOCK_HEIGHT_KEY, String(cliDockHeight)); } catch (_) {}
+    }
+}
+
+/** つまみのドラッグ。つまみ以外（境界線・本文）は反応させない */
+function cliSetupDockGrip() {
+    const grip = document.getElementById('cli-memo-grip');
+    if (!grip) return;
+    let pid = null, startY = 0, startH = 0, dragging = false;
+
+    grip.addEventListener('pointerdown', (e) => {
+        pid = e.pointerId;
+        startY = e.clientY;
+        startH = cliDockHeight;
+        dragging = false;
+        try { grip.setPointerCapture(pid); } catch (_) {}
+    });
+    grip.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== pid) return;
+        if (!dragging) {
+            if (Math.abs(e.clientY - startY) < CLI_DOCK_DRAG_SLOP) return;
+            // 遊びの分だけ高さが跳ねないよう、ここを起点にし直す
+            dragging = true;
+            startY = e.clientY;
+            grip.classList.add('dragging');
+            if (!cliMemoExpanded) toggleCliMemoExpand();
+        }
+        cliSetDockHeight(startH - (e.clientY - startY), false);
+    });
+    const end = (e) => {
+        if (e.pointerId !== pid) return;
+        pid = null;
+        if (!dragging) return;
+        dragging = false;
+        grip.classList.remove('dragging');
+        cliSetDockHeight(cliDockHeight, true);
+        if (cliEditorInstance) cliEditorInstance.refresh();
+    };
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+}
+
+/**
+ * 本文の入力中（＝ソフトキーボードが出ている）かを判定して、下パネルを縮める。
+ * 外付けキーボードでは画面が狭くならないので、表示領域の縮みも条件にする
+ */
+function cliUpdateKbState() {
+    const viewer = document.getElementById('cli-viewer');
+    if (!viewer) return;
+    let open = cliEditorFocused && cliEditMode && !cliIsPcLayout();
+    if (open && window.visualViewport && cliVvBaseHeight) {
+        open = window.visualViewport.height < cliVvBaseHeight * 0.8;
+    }
+    if (viewer.classList.contains('cli-kb-open') === open) return;
+    viewer.classList.toggle('cli-kb-open', open);
+    if (cliEditorInstance) {
+        setTimeout(() => {
+            cliEditorInstance.refresh();
+            if (open) cliEditorInstance.scrollIntoView(null, 40);
+        }, 30);
+    }
+}
+
+/** 表示領域の高さの基準を更新する（回転したら取り直す） */
+function cliTrackViewport() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    if (Math.abs(vv.width - cliVvBaseWidth) > 1) {
+        cliVvBaseWidth = vv.width;
+        cliVvBaseHeight = vv.height;
+    } else {
+        cliVvBaseHeight = Math.max(cliVvBaseHeight, vv.height);
+    }
+    cliUpdateKbState();
+}
+
+function cliInitDock() {
+    if (cliDockReady) return;
+    cliDockReady = true;
+
+    let saved = 0;
+    try { saved = parseInt(localStorage.getItem(CLI_DOCK_HEIGHT_KEY) || '0', 10) || 0; } catch (_) {}
+    cliSetDockHeight(saved || window.innerHeight * 0.4, false);
+
+    cliSetupDockGrip();
+
+    if (window.visualViewport) {
+        cliVvBaseWidth = window.visualViewport.width;
+        cliVvBaseHeight = window.visualViewport.height;
+        window.visualViewport.addEventListener('resize', cliTrackViewport);
+    }
 }
