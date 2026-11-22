@@ -1551,7 +1551,9 @@ function cliInsertCurrentPath() {
 }
 
 // =========================================
-// 指示テンプレート管理（localStorageに保存）
+// 指示テンプレート管理
+// 正本はクラウド（Worker の tpl_get / tpl_put）。スマホ・PCで共有する。
+// localStorage は控え。通信できない時の表示と、ポップを開いた直後の即表示に使う。
 // =========================================
 
 const CLI_TEMPLATE_KEY = 'cli_instruction_templates';
@@ -1562,6 +1564,11 @@ const CLI_DEFAULT_TEMPLATES = [
     '以下の指示に従って修正してください：\n・',
     '誤字脱字・表現の不自然な箇所をチェックして、修正案を出してください。'
 ];
+
+// 同期状態の表示用（'idle' / 'syncing' / 'ok' / 'offline' / 'local'）
+let cliTplSyncState = 'idle';
+// 追加・削除の多重実行を防ぐ
+let cliTplBusy = false;
 
 function cliGetTemplates() {
     try {
@@ -1578,11 +1585,123 @@ function cliGetTemplates() {
     }
 }
 
+// 控え（localStorage）への保存
 function cliSaveTemplates(arr) {
     try {
         localStorage.setItem(CLI_TEMPLATE_KEY, JSON.stringify(arr));
     } catch (e) {
         alert('テンプレの保存に失敗しました: ' + e.message);
+    }
+}
+
+// クラウド接続に必要な設定を、モーダルを出さずに集める。未設定なら null（端末内だけで使う）
+async function cliTplCloudConfig() {
+    try {
+        const url = await getSetting('api_url');
+        const pass = await getSetting('auth_password');
+        if (!url || !pass) return null;
+        return { url, pass, encKey: await getEncryptionKey() };
+    } catch (e) {
+        return null;
+    }
+}
+
+// クラウドから取得する。未保存なら null、通信・復号に失敗したら例外
+async function cliTplCloudGet(cfg) {
+    const res = await fetch(`${cfg.url}?auth=${encodeURIComponent(cfg.pass)}&action=tpl_get`);
+    const json = await res.json();
+    if (json.status !== 'success') throw new Error(json.message || '取得失敗');
+    if (json.content == null) return null;
+
+    let text = json.content;
+    const parsed = JSON.parse(text);
+    if (parsed && parsed.encrypted) {
+        if (!cfg.encKey) throw new Error('暗号キーが未設定です');
+        text = await decryptData(parsed, cfg.encKey);
+    }
+    const arr = JSON.parse(text);
+    if (!Array.isArray(arr)) throw new Error('テンプレの形式が不正です');
+    return arr;
+}
+
+// クラウドへ保存する（暗号キーがあれば暗号化。他のファイルと同じ扱い）
+async function cliTplCloudPut(cfg, arr) {
+    let body = JSON.stringify(arr);
+    if (cfg.encKey) body = JSON.stringify(await encryptData(body, cfg.encKey));
+    const res = await fetch(`${cfg.url}?auth=${encodeURIComponent(cfg.pass)}&action=tpl_put`, {
+        method: 'POST',
+        body: body
+    });
+    const json = await res.json();
+    if (json.status !== 'success') throw new Error(json.message || '保存失敗');
+}
+
+// ポップを開いた時の同期。控えを先に出してから、クラウドの正本で差し替える
+async function cliSyncTemplatesFromCloud() {
+    const cfg = await cliTplCloudConfig();
+    if (!cfg) { cliTplSyncState = 'local'; cliRenderTemplates(); return; }
+
+    cliTplSyncState = 'syncing';
+    cliRenderTemplates();
+    try {
+        const cloud = await cliTplCloudGet(cfg);
+        if (cloud === null) {
+            // クラウドが空：この端末のテンプレを正本として引っ越す
+            await cliTplCloudPut(cfg, cliGetTemplates());
+        } else {
+            cliSaveTemplates(cloud);
+        }
+        cliTplSyncState = 'ok';
+    } catch (e) {
+        console.warn('テンプレ同期失敗:', e);
+        cliTplSyncState = 'offline';
+    }
+    cliRenderTemplates();
+}
+
+// 追加・削除の共通処理。クラウドの最新を取ってから変更を当てて書き戻す
+// （スマホとPCで交互に編集しても、相手の変更を消さないため）
+async function cliMutateTemplates(mutate) {
+    if (cliTplBusy) return false;
+    cliTplBusy = true;
+    try {
+        const cfg = await cliTplCloudConfig();
+        if (!cfg) {
+            // 接続設定がない端末は控えだけで動かす
+            const arr = cliGetTemplates();
+            if (mutate(arr) === false) return false;
+            cliSaveTemplates(arr);
+            return true;
+        }
+
+        cliTplSyncState = 'syncing';
+        cliRenderTemplates();
+        let arr;
+        try {
+            const cloud = await cliTplCloudGet(cfg);
+            arr = cloud === null ? cliGetTemplates() : cloud;
+        } catch (e) {
+            // 通信できない時に控えだけ変えると、次の同期で消えてしまうので変更しない
+            cliTplSyncState = 'offline';
+            alert('クラウドに接続できないため、テンプレを変更できませんでした。\n' + e.message);
+            return false;
+        }
+
+        if (mutate(arr) === false) { cliTplSyncState = 'ok'; return false; }
+
+        try {
+            await cliTplCloudPut(cfg, arr);
+            cliSaveTemplates(arr);
+            cliTplSyncState = 'ok';
+            return true;
+        } catch (e) {
+            cliTplSyncState = 'offline';
+            alert('テンプレのクラウド保存に失敗しました: ' + e.message);
+            return false;
+        }
+    } finally {
+        cliTplBusy = false;
+        cliRenderTemplates();
     }
 }
 
@@ -1592,11 +1711,30 @@ function cliToggleTemplatePopup() {
     if (!popup) return;
     const willShow = (popup.style.display === 'none' || popup.style.display === '');
     popup.style.display = willShow ? 'flex' : 'none';
-    if (willShow) cliRenderTemplates();
+    if (willShow) {
+        cliRenderTemplates();
+        cliSyncTemplatesFromCloud();
+    }
+}
+
+// 同期状態の表示
+function cliRenderTemplateSyncState() {
+    const el = document.getElementById('cli-template-sync');
+    if (!el) return;
+    const labels = {
+        idle: '',
+        syncing: '☁ 同期中…',
+        ok: '☁ 同期済',
+        offline: '⚠ オフライン（端末内の控え）',
+        local: '端末内のみ'
+    };
+    el.textContent = labels[cliTplSyncState] || '';
+    el.dataset.state = cliTplSyncState;
 }
 
 // テンプレ一覧の描画
 function cliRenderTemplates() {
+    cliRenderTemplateSyncState();
     const listEl = document.getElementById('cli-template-list');
     if (!listEl) return;
 
@@ -1643,42 +1781,38 @@ function cliInsertTemplate(idx) {
 }
 
 // 入力欄から新規登録
-function cliRegisterTemplate() {
+async function cliRegisterTemplate() {
     const input = document.getElementById('cli-template-input');
     const text = input.value.trim();
     if (!text) {
         alert('登録するテンプレ文を入力してください。');
         return;
     }
-    const templates = cliGetTemplates();
-    templates.push(text);
-    cliSaveTemplates(templates);
-    input.value = '';
-    cliRenderTemplates();
+    const ok = await cliMutateTemplates(arr => { arr.push(text); });
+    if (ok) input.value = '';
 }
 
 // 指示パッドの現在内容をテンプレ登録
-function cliRegisterTemplateFromInstruction() {
+async function cliRegisterTemplateFromInstruction() {
     const text = document.getElementById('cli-instruction-content').value.trim();
     if (!text) {
         alert('指示パッドが空です。');
         return;
     }
-    const templates = cliGetTemplates();
-    templates.push(text);
-    cliSaveTemplates(templates);
-    cliRenderTemplates();
+    await cliMutateTemplates(arr => { arr.push(text); });
 }
 
-// テンプレ削除
-function cliDeleteTemplate(idx) {
-    const templates = cliGetTemplates();
-    if (templates[idx] === undefined) return;
-    const preview = templates[idx].length > 20 ? templates[idx].slice(0, 20) + '…' : templates[idx];
+// テンプレ削除。クラウド側で並びが変わっている可能性があるので、番号ではなく本文で探して消す
+async function cliDeleteTemplate(idx) {
+    const target = cliGetTemplates()[idx];
+    if (target === undefined) return;
+    const preview = target.length > 20 ? target.slice(0, 20) + '…' : target;
     if (!confirm(`このテンプレを削除しますか？\n\n「${preview}」`)) return;
-    templates.splice(idx, 1);
-    cliSaveTemplates(templates);
-    cliRenderTemplates();
+    await cliMutateTemplates(arr => {
+        const i = arr.indexOf(target);
+        if (i < 0) return false; // 他の端末で既に消されていた
+        arr.splice(i, 1);
+    });
 }
 
 function showCliCopyToast() {

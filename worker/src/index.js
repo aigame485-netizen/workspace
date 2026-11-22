@@ -55,6 +55,10 @@ async function handleRequest(request, env, cors) {
     return jsonResponse(await handleCli(action, params, request, env), cors);
   }
 
+  // 指示テンプレート（スマホ・PCで共有する。本文は暗号文のまま保存）
+  if (action === 'tpl_get') return jsonResponse(await getTemplates(env), cors);
+  if (action === 'tpl_put') return jsonResponse(await putTemplates(request, env), cors);
+
   // Canvasボード: 一覧・削除
   if (action === 'list') return jsonResponse(await listBoards(env), cors);
   if (action === 'delete') return jsonResponse(await deleteBoard(params, env), cors);
@@ -238,6 +242,26 @@ async function deleteAllCli(env) {
     if (!page.truncated) break;
   }
   return count;
+}
+
+// ============================================================
+//  指示テンプレート
+// ============================================================
+
+const TEMPLATE_KEY = 'settings/templates.json';
+
+/** 未保存なら content: null を返す（クライアントはこれを見て初回アップロードする） */
+async function getTemplates(env) {
+  const obj = await env.BUCKET.get(TEMPLATE_KEY);
+  if (!obj) return { status: 'success', content: null };
+  return { status: 'success', content: await obj.text(), updatedAt: obj.uploaded.toISOString() };
+}
+
+async function putTemplates(request, env) {
+  const body = request.method === 'POST' ? await request.arrayBuffer() : null;
+  if (!body || body.byteLength === 0) return errorResult('本文が空です');
+  const saved = await env.BUCKET.put(TEMPLATE_KEY, body);
+  return { status: 'success', updatedAt: saved.uploaded.toISOString() };
 }
 
 // ============================================================

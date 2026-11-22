@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     
     <!-- ?v= はキャッシュバスター。JS/CSSを更新したらこの数字を上げること -->
-    <link rel="stylesheet" href="css/style.css?v=20261019">
+    <link rel="stylesheet" href="css/style.css?v=20261122">
 </head>
 <body>
 
@@ -227,7 +227,7 @@
                         <!-- テンプレ管理ポップ -->
                         <div id="cli-template-popup" class="cli-template-popup" style="display:none;">
                             <div class="cli-template-popup-header">
-                                <span>📌 テンプレート</span>
+                                <span>📌 テンプレート <small id="cli-template-sync" class="cli-template-sync"></small></span>
                                 <button class="cli-template-close" onclick="cliToggleTemplatePopup()">✕</button>
                             </div>
                             <div class="cli-template-list" id="cli-template-list"></div>
@@ -384,6 +384,6 @@
     <script src="js/serifu-check.js?v=20261024"></script>
 
     <!-- CLI Viewer -->
-    <script src="js/cli-viewer.js?v=20261019"></script>
+    <script src="js/cli-viewer.js?v=20261122"></script>
 </body>
 </html>
