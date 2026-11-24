@@ -1384,6 +1384,8 @@
             background: #4a5568; transition: background 0.15s;
         }
         .cli-memo-grip.dragging span { background: #63b3ed; }
+        /* 右パネルの幅調整つまみはPC専用（PC用メディアクエリ内で表示する） */
+        .cli-panel-resizer { display: none; }
         #cli-viewer.cli-dock-on .cli-memo-grip { display: flex; }
         /* サブ表示中は高さを固定し、余白なしで本文を詰める */
         .cli-memo-body.dock-mode {
@@ -1445,7 +1447,8 @@
                 margin-left: 300px;
                 transition: margin-left 0.3s ease;
                 display: grid;
-                grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 400px);
+                /* --cli-panel-w はつまみで幅を変えた時だけJSが入れる。未設定なら従来の自動幅 */
+                grid-template-columns: minmax(0, 1fr) var(--cli-panel-w, clamp(320px, 26vw, 400px));
                 grid-template-rows: auto auto minmax(0, 1fr);
             }
             .cli-draft-banner  { grid-column: 1; grid-row: 1; }
@@ -1463,7 +1466,21 @@
                 display: flex; flex-direction: column;
                 overflow: hidden;
                 padding-bottom: 0;
+                position: relative;   /* 幅調整つまみの基準 */
             }
+            /* 右パネルの左縁にある幅調整つまみ */
+            .cli-panel-resizer {
+                display: block;
+                position: absolute; top: 0; bottom: 0; left: 0;
+                width: 6px; z-index: 10;
+                cursor: ew-resize;
+                touch-action: none;
+                transition: background 0.15s;
+            }
+            .cli-panel-resizer:hover,
+            .cli-panel-resizer.dragging { background: rgba(99, 179, 237, 0.5); }
+            /* ドラッグ中は本文の文字選択やカーソル変化を止める */
+            body.cli-panel-resizing { cursor: ew-resize; user-select: none; }
             .cli-memo-header {
                 flex-shrink: 0;
                 border-bottom: 1px solid #2d3748;

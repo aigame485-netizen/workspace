@@ -3611,10 +3611,102 @@ function cliInitDock() {
     cliSetDockHeight(saved || window.innerHeight * 0.4, false);
 
     cliSetupDockGrip();
+    cliInitPanelWidth();
 
     if (window.visualViewport) {
         cliVvBaseWidth = window.visualViewport.width;
         cliVvBaseHeight = window.visualViewport.height;
         window.visualViewport.addEventListener('resize', cliTrackViewport);
     }
+}
+
+// =========================================
+// PC版：右パネル（指示／提案／サブ）の幅調整
+// =========================================
+// 右パネルの左縁のつまみを左右にドラッグして幅を変える。ダブルクリックで初期幅に戻す。
+// 幅は CSS変数 --cli-panel-w で渡し、未設定なら CSS 側の自動幅（26vw, 320〜400px）になる。
+const CLI_PANEL_WIDTH_KEY = 'cli_panel_width';
+const CLI_PANEL_MIN_WIDTH = 240;       // パネルの最小幅
+const CLI_PANEL_MAIN_MIN_WIDTH = 360;  // 本文側に最低限残す幅
+let cliPanelWidth = 0;                 // 0 = 自動幅
+
+/** 本文が潰れないように上限を決める */
+function cliPanelMaxWidth() {
+    const main = document.querySelector('#cli-viewer .cli-main');
+    const total = main ? main.getBoundingClientRect().width : window.innerWidth;
+    return Math.max(CLI_PANEL_MIN_WIDTH, total - CLI_PANEL_MAIN_MIN_WIDTH);
+}
+
+/** 幅を反映する。w=0 で自動幅に戻す */
+function cliSetPanelWidth(w, save) {
+    const viewer = document.getElementById('cli-viewer');
+    if (!viewer) return;
+    if (w > 0) {
+        cliPanelWidth = Math.round(Math.min(Math.max(w, CLI_PANEL_MIN_WIDTH), cliPanelMaxWidth()));
+        viewer.style.setProperty('--cli-panel-w', cliPanelWidth + 'px');
+    } else {
+        cliPanelWidth = 0;
+        viewer.style.removeProperty('--cli-panel-w');
+    }
+    if (save) {
+        try {
+            if (cliPanelWidth) localStorage.setItem(CLI_PANEL_WIDTH_KEY, String(cliPanelWidth));
+            else localStorage.removeItem(CLI_PANEL_WIDTH_KEY);
+        } catch (_) {}
+    }
+}
+
+function cliInitPanelWidth() {
+    const grip = document.getElementById('cli-panel-resizer');
+    if (!grip) return;
+
+    let saved = 0;
+    try { saved = parseInt(localStorage.getItem(CLI_PANEL_WIDTH_KEY) || '0', 10) || 0; } catch (_) {}
+    // 画面がまだ非表示の時に呼ばれても潰れないよう、復元時は上限で削らずそのまま入れる
+    if (saved >= CLI_PANEL_MIN_WIDTH) {
+        cliPanelWidth = saved;
+        document.getElementById('cli-viewer').style.setProperty('--cli-panel-w', saved + 'px');
+    }
+
+    let pid = null, startX = 0, startW = 0;
+    grip.addEventListener('pointerdown', (e) => {
+        if (!cliIsPcLayout() || e.button !== 0) return;
+        e.preventDefault();
+        pid = e.pointerId;
+        startX = e.clientX;
+        startW = document.getElementById('cli-memo-area').getBoundingClientRect().width;
+        try { grip.setPointerCapture(pid); } catch (_) {}
+        grip.classList.add('dragging');
+        document.body.classList.add('cli-panel-resizing');
+    });
+    grip.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== pid) return;
+        // パネルは右端にあるので、左へ動かすほど広くなる
+        cliSetPanelWidth(startW - (e.clientX - startX), false);
+    });
+    const end = (e) => {
+        if (e.pointerId !== pid) return;
+        pid = null;
+        grip.classList.remove('dragging');
+        document.body.classList.remove('cli-panel-resizing');
+        cliSetPanelWidth(cliPanelWidth, true);
+        if (cliEditorInstance) cliEditorInstance.refresh();
+    };
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+
+    // ダブルクリックで初期幅（自動）に戻す
+    grip.addEventListener('dblclick', () => {
+        cliSetPanelWidth(0, true);
+        if (cliEditorInstance) cliEditorInstance.refresh();
+    });
+
+    // ウィンドウを狭めた時、本文が潰れないよう上限に合わせ直す（保存値は変えない）
+    window.addEventListener('resize', () => {
+        if (cliPanelWidth && cliIsPcLayout()) {
+            const viewer = document.getElementById('cli-viewer');
+            const w = Math.min(cliPanelWidth, cliPanelMaxWidth());
+            viewer.style.setProperty('--cli-panel-w', Math.round(w) + 'px');
+        }
+    });
 }
