@@ -649,6 +649,40 @@ function cliCreateFolderNode(node) {
     return folderDiv;
 }
 
+// ファイル名ポップアップ（サイドバーはoverflowで切れるため、body直下の固定要素を1つ使い回す）
+let cliNameTipByLongPress = false;   // 長押しで出した直後のクリックを無視するための印
+let cliNameTipTimer = null;          // 長押し/右クリックで出した時の自動で消すタイマー
+function cliShowNameTip(anchor, text, autoHide) {
+    clearTimeout(cliNameTipTimer);
+    if (autoHide) cliNameTipTimer = setTimeout(cliHideNameTip, 4000);
+    let tip = document.getElementById('cli-name-tip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'cli-name-tip';
+        document.body.appendChild(tip);
+    }
+    tip.textContent = text;
+    const r = anchor.getBoundingClientRect();
+    tip.style.left = r.left + 'px';
+    tip.style.top = (r.bottom + 4) + 'px';
+    tip.style.display = 'block';
+    // 画面右端・下端からはみ出す時は内側に寄せる
+    const t = tip.getBoundingClientRect();
+    if (t.right > window.innerWidth - 8) tip.style.left = Math.max(8, window.innerWidth - 8 - t.width) + 'px';
+    if (t.bottom > window.innerHeight - 8) tip.style.top = (r.top - 4 - t.height) + 'px';
+}
+function cliHideNameTip() {
+    const tip = document.getElementById('cli-name-tip');
+    if (tip) tip.style.display = 'none';
+}
+// サイドバーをスクロールした時も位置がずれるので消す
+document.addEventListener('scroll', cliHideNameTip, true);
+// 次にどこかをタッチしたら消す（長押しで出したポップアップを閉じる用）
+document.addEventListener('touchstart', () => {
+    cliHideNameTip();
+    cliNameTipByLongPress = false;
+}, { capture: true, passive: true });
+
 function cliCreateFileItem(fileInfo) {
     const fileName = fileInfo.path.split('/').pop();
     // 「今アクティブなペインが開いているファイル」に👉を付ける（メイン/サブで指す先が変わる）
@@ -661,10 +695,40 @@ function cliCreateFileItem(fileInfo) {
     item.className = 'cli-file-item' + (isSelected ? ' selected' : '');
 
     const nameSpan = document.createElement('span');
-    nameSpan.style.cssText = 'flex-grow:1; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+    // 長押しで文字選択やiPhoneのメニューが出ないよう touch-callout / user-select を切る
+    nameSpan.style.cssText = 'flex-grow:1; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;';
     const fileIcon = cliIsImagePath(fileInfo.path) ? '🖼️' : '📄';
     nameSpan.textContent = (isSelected ? '👉 ' : (inOtherSub ? '📚 ' : fileIcon + ' ')) + fileName;
-    nameSpan.onclick = () => cliHandleFileClick(fileInfo.path);
+    nameSpan.onclick = () => {
+        // 長押しでポップアップを出した直後の「指を離したクリック」はファイルを開かない
+        if (cliNameTipByLongPress) { cliNameTipByLongPress = false; return; }
+        cliHideNameTip();
+        cliHandleFileClick(fileInfo.path);
+    };
+    // PC: 名前が「…」で切れている時だけ、カーソルを合わせるとフル名をポップアップ表示
+    nameSpan.addEventListener('mouseenter', () => {
+        if (nameSpan.scrollWidth > nameSpan.clientWidth) cliShowNameTip(nameSpan, fileName);
+    });
+    nameSpan.addEventListener('mouseleave', cliHideNameTip);
+    // 右クリック（Androidの長押しもこれが飛ぶ）: ブラウザのメニューの代わりにフル名を表示
+    nameSpan.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        cliShowNameTip(nameSpan, fileName, true);
+    });
+    // スマホ: 0.5秒長押しでフル名を表示（iPhoneはcontextmenuが来ないのでタイマーで拾う）
+    let pressTimer = null;
+    const cancelPress = () => { clearTimeout(pressTimer); pressTimer = null; };
+    nameSpan.addEventListener('touchstart', () => {
+        cancelPress();
+        pressTimer = setTimeout(() => {
+            pressTimer = null;
+            cliNameTipByLongPress = true;
+            cliShowNameTip(nameSpan, fileName, true);
+        }, 500);
+    }, { passive: true });
+    nameSpan.addEventListener('touchmove', cancelPress, { passive: true });
+    nameSpan.addEventListener('touchend', cancelPress);
+    nameSpan.addEventListener('touchcancel', cancelPress);
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'cli-file-delete';

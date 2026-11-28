@@ -605,6 +605,14 @@
             color: #e2e8f0; font-size: 0.85rem;
         }
         .cli-file-item:hover { background-color: #4a5568; }
+        /* ファイル名が切れている時のフル名ポップアップ（JSで位置指定） */
+        #cli-name-tip {
+            position: fixed; display: none; z-index: 20000; pointer-events: none;
+            max-width: 480px; padding: 4px 8px; border-radius: 4px;
+            background: #1a202c; color: #e2e8f0; border: 1px solid #4a5568;
+            font-size: 0.72rem; line-height: 1.4; word-break: break-all;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
         .cli-file-item.selected { background-color: #2b6cb0; }
         .cli-file-delete {
             background: none; border: none; color: #fc8181; cursor: pointer;
