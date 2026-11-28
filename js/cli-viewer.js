@@ -675,6 +675,49 @@ function cliHideNameTip() {
     const tip = document.getElementById('cli-name-tip');
     if (tip) tip.style.display = 'none';
 }
+/**
+ * 要素にフル名ポップアップを付ける（サイドバーのファイル一覧・パス挿入の一覧で共用）
+ *   PC: カーソルを合わせた時、文字が「…」で切れていれば表示
+ *   右クリック / スマホの0.5秒長押し: 切れていなくても表示（4秒で自動で消える）
+ *   長押しで出した直後のクリックは止めて、ファイルを開く・挿入するが走らないようにする
+ */
+function cliAttachNameTip(el, text) {
+    el.style.webkitTouchCallout = 'none';   // 長押しで文字選択やiPhoneのメニューが出ないように
+    el.style.webkitUserSelect = 'none';
+    el.style.userSelect = 'none';
+
+    // 自分か子要素のどれかが「…」で切れているか
+    const isTruncated = () => [el, ...el.children].some(n => n.scrollWidth > n.clientWidth);
+    el.addEventListener('mouseenter', () => { if (isTruncated()) cliShowNameTip(el, text); });
+    el.addEventListener('mouseleave', cliHideNameTip);
+    // 右クリック（Androidの長押しもこれが飛ぶ）: ブラウザのメニューの代わりに表示
+    el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        cliShowNameTip(el, text, true);
+    });
+    // スマホの長押し（iPhoneはcontextmenuが来ないのでタイマーで拾う）
+    let pressTimer = null;
+    const cancelPress = () => { clearTimeout(pressTimer); pressTimer = null; };
+    el.addEventListener('touchstart', () => {
+        cancelPress();
+        pressTimer = setTimeout(() => {
+            pressTimer = null;
+            cliNameTipByLongPress = true;
+            cliShowNameTip(el, text, true);
+        }, 500);
+    }, { passive: true });
+    el.addEventListener('touchmove', cancelPress, { passive: true });
+    el.addEventListener('touchend', cancelPress);
+    el.addEventListener('touchcancel', cancelPress);
+    // 長押し直後のクリックは、この要素の他の処理にも親の行にも渡さない
+    el.addEventListener('click', (e) => {
+        if (!cliNameTipByLongPress) return;
+        cliNameTipByLongPress = false;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }, true);
+}
+
 // サイドバーをスクロールした時も位置がずれるので消す
 document.addEventListener('scroll', cliHideNameTip, true);
 // 次にどこかをタッチしたら消す（長押しで出したポップアップを閉じる用）
@@ -695,40 +738,14 @@ function cliCreateFileItem(fileInfo) {
     item.className = 'cli-file-item' + (isSelected ? ' selected' : '');
 
     const nameSpan = document.createElement('span');
-    // 長押しで文字選択やiPhoneのメニューが出ないよう touch-callout / user-select を切る
-    nameSpan.style.cssText = 'flex-grow:1; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;';
+    nameSpan.style.cssText = 'flex-grow:1; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
     const fileIcon = cliIsImagePath(fileInfo.path) ? '🖼️' : '📄';
     nameSpan.textContent = (isSelected ? '👉 ' : (inOtherSub ? '📚 ' : fileIcon + ' ')) + fileName;
+    cliAttachNameTip(nameSpan, fileName);   // onclickより先に付ける（長押し後のクリック止めを先に効かせる）
     nameSpan.onclick = () => {
-        // 長押しでポップアップを出した直後の「指を離したクリック」はファイルを開かない
-        if (cliNameTipByLongPress) { cliNameTipByLongPress = false; return; }
         cliHideNameTip();
         cliHandleFileClick(fileInfo.path);
     };
-    // PC: 名前が「…」で切れている時だけ、カーソルを合わせるとフル名をポップアップ表示
-    nameSpan.addEventListener('mouseenter', () => {
-        if (nameSpan.scrollWidth > nameSpan.clientWidth) cliShowNameTip(nameSpan, fileName);
-    });
-    nameSpan.addEventListener('mouseleave', cliHideNameTip);
-    // 右クリック（Androidの長押しもこれが飛ぶ）: ブラウザのメニューの代わりにフル名を表示
-    nameSpan.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        cliShowNameTip(nameSpan, fileName, true);
-    });
-    // スマホ: 0.5秒長押しでフル名を表示（iPhoneはcontextmenuが来ないのでタイマーで拾う）
-    let pressTimer = null;
-    const cancelPress = () => { clearTimeout(pressTimer); pressTimer = null; };
-    nameSpan.addEventListener('touchstart', () => {
-        cancelPress();
-        pressTimer = setTimeout(() => {
-            pressTimer = null;
-            cliNameTipByLongPress = true;
-            cliShowNameTip(nameSpan, fileName, true);
-        }, 500);
-    }, { passive: true });
-    nameSpan.addEventListener('touchmove', cancelPress, { passive: true });
-    nameSpan.addEventListener('touchend', cancelPress);
-    nameSpan.addEventListener('touchcancel', cancelPress);
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'cli-file-delete';
@@ -2073,6 +2090,7 @@ function fbCreateNode(item) {
         const name = document.createElement('span');
         name.className = 'fb-item-name';
         name.textContent = item.name;
+        cliAttachNameTip(name, item.name);
 
         const hint = document.createElement('span');
         hint.className = 'fb-insert-hint';
@@ -2126,6 +2144,7 @@ function fbCreateNode(item) {
         const name = document.createElement('span');
         name.className = 'fb-item-name';
         name.textContent = item.name;
+        cliAttachNameTip(name, item.name);
 
         const hint = document.createElement('span');
         hint.className = 'fb-insert-hint';
@@ -2234,6 +2253,8 @@ function cliFolderSearch(query) {
 
         nameWrap.appendChild(name);
         nameWrap.appendChild(pathPreview);
+        // 検索結果はパスも切れやすいので、フルパスを出す
+        cliAttachNameTip(nameWrap, item.path);
 
         row.appendChild(icon);
         row.appendChild(nameWrap);
